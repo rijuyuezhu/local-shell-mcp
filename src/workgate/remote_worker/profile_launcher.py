@@ -156,11 +156,12 @@ def ensure_profile_launcher(
     )
     changed = False
     for path, content in desired:
+        encoded = content.encode("utf-8")
         try:
-            current = path.read_text(encoding="utf-8")
+            current = path.read_bytes()
         except OSError:
             current = None
-        if path.is_symlink() or current != content:
+        if path.is_symlink() or current != encoded:
             atomic_write_private_text(path, content)
             changed = True
     if os.name != "nt":

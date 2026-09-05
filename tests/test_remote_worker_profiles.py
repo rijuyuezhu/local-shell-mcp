@@ -249,6 +249,34 @@ def test_profile_launcher_materialization_is_stable_and_runtime_only(
     assert changed_again is False
 
 
+def test_profile_launcher_idempotency_compares_exact_crlf_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(
+        "WORKGATE_WORKER_STATE_DIR", str(tmp_path / "worker state")
+    )
+    monkeypatch.setenv(WORKER_DATA_DIR_ENV, str(tmp_path / "worker data"))
+    launcher_text = "first\r\nsecond\r\n"
+    if os.name == "nt":
+        monkeypatch.setattr(
+            profile_launcher, "_windows_launcher_text", lambda: launcher_text
+        )
+    else:
+        monkeypatch.setattr(
+            profile_launcher, "_posix_launcher_text", lambda: launcher_text
+        )
+
+    launcher, changed = profile_launcher.ensure_profile_launcher(sys.executable)
+    same_launcher, changed_again = profile_launcher.ensure_profile_launcher(
+        sys.executable
+    )
+
+    assert launcher.read_bytes() == launcher_text.encode("utf-8")
+    assert same_launcher == launcher
+    assert changed is True
+    assert changed_again is False
+
+
 def test_profile_launcher_reconnect_command_validates_profile_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
