@@ -385,24 +385,6 @@ async def test_remote_todo_write_maps_validation_conflict_and_runtime_errors(
         await ui_todos_module._write(session, [], 0)
 
 
-def test_old_todo_paths_are_not_read(monkeypatch, tmp_path):
-    workspace = tmp_path / "workspace"
-    _configure(monkeypatch, workspace)
-    session = _local_session(workspace)
-    legacy = workspace / ".state" / "todos" / f"{session.session_id}.json"
-    legacy.parent.mkdir(parents=True, exist_ok=True)
-    legacy.write_text(
-        json.dumps({"revision": 9, "updated_at": 1.0, "todos": [_item("old")]}),
-        encoding="utf-8",
-    )
-
-    result = read_todos_execute(session.session_id)
-
-    assert result.revision == 0
-    assert result.todos == []
-    assert legacy.is_file()
-
-
 def test_revision_guard_serializes_concurrent_replacements(
     monkeypatch, tmp_path
 ):
@@ -794,29 +776,3 @@ def test_todo_api_enforces_local_remote_and_write_scopes(monkeypatch, tmp_path):
     assert SCOPE_SHELL_WRITE in missing_remote_write.text
     assert writable_local.status_code == 200
     assert writable_remote.status_code == 200
-
-
-def test_sessions_static_ui_owns_todos_and_immediate_termination():
-    static_root = (
-        Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
-    )
-    index = (static_root / "index.html").read_text(encoding="utf-8")
-    script = (static_root / "sessions.js").read_text(encoding="utf-8")
-
-    assert 'id="session-panel"' in index
-    assert 'id="session-machine"' in index
-    assert 'id="session-list"' in index
-    assert 'id="session-include-inactive"' in index
-    assert 'id="session-terminate"' in index
-    assert 'id="todo-save"' in index
-    assert 'id="session-audit-list"' in index
-    assert 'id="todo-panel"' not in index
-    assert 'id="todo-machine"' not in index
-    assert 'id="todo-session"' not in index
-    assert "refreshTodoSessions" in script
-    assert 'params.set("include_inactive", "true")' in script
-    assert 'request("/sessions/terminate"' in script
-    assert "session_id: requestedSession" in script
-    assert "expected_revision" in script
-    assert "todoMutationBusy" in script
-    assert "Todo list changed elsewhere; reloaded the latest revision" in script

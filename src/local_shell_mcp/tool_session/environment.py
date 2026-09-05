@@ -56,12 +56,6 @@ class _CommandProbe:
     source: str | None
 
 
-def clear_session_environment_cache() -> None:
-    """Clear briefly cached machine-static tool probes."""
-    with _CACHE_LOCK:
-        _TOOL_CACHE.clear()
-
-
 def _safe_token(value: str, fallback: str, maximum: int = 80) -> str:
     normalized = _SAFE_TOKEN_RE.sub("_", value.strip())[:maximum].strip("_")
     return normalized or fallback

@@ -150,7 +150,7 @@ def test_create_session_retries_id_collisions(tmp_path, monkeypatch):
     store = get_tool_session_store()
     store.clear()
     ids = iter(["aaaaaaaa", "aaaaaaaa", "bbbbbbbb"])
-    monkeypatch.setattr(store_module, "generate_session_id", lambda: next(ids))
+    monkeypatch.setattr(store_module, "_generate_session_id", lambda: next(ids))
 
     first = store.create_session(workdir=".")
     second = store.create_session(workdir=".")

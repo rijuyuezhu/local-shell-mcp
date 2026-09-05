@@ -11,9 +11,6 @@ from local_shell_mcp.composition.services import (
 )
 from local_shell_mcp.config.settings import Settings
 from local_shell_mcp.executors.runtime import build_controller_runtime
-from local_shell_mcp.executors.runtime_services import (
-    configure_runtime_services,
-)
 from local_shell_mcp.jobs.managed import (
     ManagedJobsRuntime,
     configure_managed_jobs_runtime,
@@ -56,15 +53,15 @@ def test_runtime_services_install_explicit_store_dependencies(tmp_path):
         state_dir=tmp_path / ".state",
     )
 
-    services = configure_runtime_services(settings)
+    services = build_runtime_services(settings)
+    installation = install_runtime_services(services)
     try:
         assert get_state_store() is services.state_store
         assert get_tool_session_store() is services.tool_session_store
         assert services.state_store.layout.root == settings.state_dir
         assert services.tool_session_store._settings() is settings
     finally:
-        configure_tool_session_store(None)
-        configure_state_store(None)
+        installation.close()
 
 
 def test_runtime_service_construction_does_not_install_compatibility_globals(

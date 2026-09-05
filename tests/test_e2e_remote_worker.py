@@ -145,7 +145,6 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
             "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
             "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
-            "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES": "1",
             "PYTHONNOUSERSITE": "1",
         }
     )

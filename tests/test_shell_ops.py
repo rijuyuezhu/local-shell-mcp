@@ -2012,10 +2012,7 @@ async def test_run_shell_command_filters_server_environment(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "should-not-leak")
     monkeypatch.setenv("PYTHONPATH", "/app/src")
-    monkeypatch.setenv("DOCKER_RUN_AS_ROOT", "false")
-    monkeypatch.setenv("DOCKER_PERSISTENT_CREDENTIALS", "true")
-    monkeypatch.setenv("DOCKER_CREDENTIALS_DIR", "/persist/credentials")
-    monkeypatch.setenv("DOCKER_CHOWN_WORKSPACE", "true")
+    monkeypatch.setenv("DOCKER_AUTH_CONFIG", "should-not-leak")
     monkeypatch.setenv("CLOUDFLARE_TUNNEL_TOKEN", "should-not-leak")
     clear_settings_cache()
 

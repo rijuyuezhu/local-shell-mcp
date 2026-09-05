@@ -80,12 +80,6 @@ def next_managed_deferred_sequence() -> int:
         return sequence
 
 
-def reset_deferred_sequence_for_tests() -> None:
-    """Reset the process-local deferred sequence cache for isolated tests."""
-    global _MANAGED_DEFERRED_NEXT_SEQUENCE
-    _MANAGED_DEFERRED_NEXT_SEQUENCE = None
-
-
 def write_managed_deferred_update(
     session_id: str,
     job_id: str,

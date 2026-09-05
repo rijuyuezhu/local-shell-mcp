@@ -104,11 +104,9 @@ def test_legacy_migration_is_atomic_idempotent_and_retains_old_state(
 
     first = worker_migration.migrate_legacy_worker_state()
     second = worker_migration.migrate_legacy_worker_state()
-    inspected = worker_migration.migrated_legacy_profile()
 
     assert first is not None
     assert second == first
-    assert inspected == first
     assert calls == [identity["server"]]
     profile_id = str(first["profile_id"])
     assert profile_id.startswith("p_")

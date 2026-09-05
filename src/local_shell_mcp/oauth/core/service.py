@@ -23,7 +23,7 @@ from ...audit import audit
 from ...config.settings import get_settings
 from ..protocol.adapters import LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
-from .client_store import load_persisted_clients, persist_approved_clients
+from .client_store import persist_approved_clients
 from .models import AuthCode, OAuthClient
 from .requests import (
     AuthorizationRequestInput,
@@ -305,20 +305,6 @@ def _prune_clients(
                 client, now=current_time, ttl_s=settings.oauth_client_ttl_s
             ):
                 current.clients.pop(client_id, None)
-
-
-def initialize_dynamic_clients() -> int:
-    """Load approved clients into the currently bound compatibility owner."""
-    state = oauth_state()
-    state.require_open()
-    with state.client_lock:
-        state.require_open()
-        staged_clients = dict(state.clients)
-        loaded = load_persisted_clients(staged_clients)
-        state.clients.clear()
-        state.clients.update(staged_clients)
-        _prune_clients(state=state)
-        return loaded
 
 
 def register_dynamic_client(

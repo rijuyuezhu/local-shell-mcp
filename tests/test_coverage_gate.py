@@ -102,7 +102,6 @@ def _policy() -> dict[str, Any]:
                 "src/local_shell_mcp/ops/shell.py",
                 "src/local_shell_mcp/ops/transfer.py",
                 "src/local_shell_mcp/remote/manager.py",
-                "src/local_shell_mcp/remote/transfer.py",
                 "src/local_shell_mcp/remote/transfer_gateway.py",
                 "src/local_shell_mcp/tool_session/store.py",
                 "src/local_shell_mcp/ui/security.py",

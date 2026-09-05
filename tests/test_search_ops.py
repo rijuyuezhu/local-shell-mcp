@@ -5,7 +5,8 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops import search as search_ops_module
-from local_shell_mcp.ops.files import hashline_edit_execute
+from local_shell_mcp.ops.files import files_config_from_settings
+from local_shell_mcp.ops.files_service import FilesService
 from local_shell_mcp.ops.search import (
     glob_search_execute,
     grep_search_execute,
@@ -19,6 +20,14 @@ def _create_session() -> str:
     store = get_tool_session_store()
     store.clear()
     return store.create_session(workdir=".").session_id
+
+
+def _files_service() -> FilesService:
+    return FilesService(
+        files_config_from_settings(get_settings()),
+        get_tool_session_store(),
+        remote=None,
+    )
 
 
 @pytest.mark.asyncio
@@ -543,7 +552,7 @@ async def test_hashline_edit_accepts_displayed_search_context_row(
         if line.startswith("[src/app.py#")
     )
     hashline_input = f"{header}\n1:alpha\n+ALPHA"
-    hashline_edit_execute(hashline_input, session_id)
+    await _files_service().hashline_edit(session_id, hashline_input)
 
     assert target.read_text(encoding="utf-8") == "ALPHA\nneedle here\ngamma\n"
 
@@ -740,7 +749,7 @@ async def test_search_numbered_content_can_feed_hashline_edit(
     header = result.numbered_content.splitlines()[0]
     assert header.startswith("[src/app.py#")
     hashline_input = f"{header}\n1:alpha\n+ALPHA"
-    hashline_edit_execute(hashline_input, session_id)
+    await _files_service().hashline_edit(session_id, hashline_input)
 
     assert target.read_text(encoding="utf-8") == "ALPHA\nneedle here\ngamma\n"
 

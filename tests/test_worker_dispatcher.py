@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from local_shell_mcp.remote.tool_specs import (
@@ -65,14 +63,3 @@ def test_worker_dispatcher_rejects_unknown_override() -> None:
         ValueError, match="unknown remote worker handler override"
     ):
         build_worker_dispatcher(handler_overrides={"plugin": handler})
-
-
-def test_worker_dispatcher_has_no_module_global_domain_service_locator() -> (
-    None
-):
-    source = Path("src/local_shell_mcp/remote_worker/dispatch.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "get_search_service" not in source
-    assert "_SEARCH_SERVICE" not in source

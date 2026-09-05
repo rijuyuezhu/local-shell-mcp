@@ -245,7 +245,7 @@ async def test_tmux_exec_uses_configured_shell_environment(
     monkeypatch.setattr(
         shell_ops,
         "require_tmux",
-        lambda: TmuxSelection("/opt/local-shell-mcp/tmux", "bundled", "tmux"),
+        lambda: TmuxSelection("/usr/bin/tmux", "system", "tmux"),
     )
     calls: list[tuple[list[str], str, int | None, dict[str, str] | None]] = []
 
@@ -268,7 +268,7 @@ async def test_tmux_exec_uses_configured_shell_environment(
     assert result.ok is True
     assert calls == [
         (
-            ["/opt/local-shell-mcp/tmux", "new-session", "-c", str(tmp_path)],
+            ["/usr/bin/tmux", "new-session", "-c", str(tmp_path)],
             ".",
             5,
             {"TMUX": "", "TMUX_PANE": "", "SHELL": str(shell)},

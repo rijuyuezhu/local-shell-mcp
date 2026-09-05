@@ -63,8 +63,6 @@ nav:
       - Cloudflare Tunnel: getting-started/cloudflare-tunnel.md
       - ChatGPT connector: getting-started/chatgpt-connector.md
       - Install options: getting-started/install-options.md
-      - Docker Compose: getting-started/docker-compose.md
-      - VS Code: getting-started/vscode.md
   - Guides:
       - Common workflows: guides/common-workflows.md
       - Human interface: guides/human-interface.md

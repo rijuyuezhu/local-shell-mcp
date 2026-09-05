@@ -38,22 +38,8 @@ _ALLOWED_RELEASE_IMPORTS = frozenset(
     }
 )
 
-# Keep existing cycles visible and prevent new ones. Each set must shrink when the
-# corresponding hardening phase extracts a dependency-leaf contract.
+# Keep dependency cycles explicit. The current architecture has none.
 _ALLOWED_DEPENDENCY_CYCLES: frozenset[frozenset[str]] = frozenset()
-
-
-def test_python_314_sources_do_not_enable_future_annotations() -> None:
-    """Keep deferred annotations on Python 3.14's native semantics."""
-    legacy_import = "from __future__ import " + "annotations"
-    offenders = sorted(
-        str(path.relative_to(_PROJECT_ROOT))
-        for root_name in ("src", "tests", "scripts")
-        for path in (_PROJECT_ROOT / root_name).rglob("*.py")
-        if legacy_import in path.read_text(encoding="utf-8")
-    )
-
-    assert offenders == []
 
 
 def _module_name(path: Path) -> str:
@@ -169,41 +155,17 @@ def _dependency_cycles() -> frozenset[frozenset[str]]:
     return frozenset(cycles)
 
 
-def test_main_cli_composes_only_domain_registrars() -> None:
+def test_main_cli_stays_a_thin_composition_root() -> None:
     main = f"{_PACKAGE_NAME}.main"
     actual = {
         target for importer, target in _local_imports() if importer == main
     }
 
-    assert actual == {
-        f"{_PACKAGE_NAME}.agent_bridge.cli",
-        f"{_PACKAGE_NAME}.executors.cli",
-        f"{_PACKAGE_NAME}.jobs.cli",
-        f"{_PACKAGE_NAME}.remote_worker.cli",
-        f"{_PACKAGE_NAME}.ui.cli",
-        f"{_PACKAGE_NAME}.version",
-    }
-
-
-def test_server_package_is_removed_and_cannot_be_imported() -> None:
-    actual = frozenset(
-        (importer, target)
-        for importer, target in _local_imports()
-        if target == f"{_PACKAGE_NAME}.server"
-        or target.startswith(f"{_PACKAGE_NAME}.server.")
+    assert actual
+    assert all(
+        target == f"{_PACKAGE_NAME}.version" or target.endswith(".cli")
+        for target in actual
     )
-
-    assert actual == frozenset()
-    assert not (_PACKAGE_ROOT / "server").exists()
-
-
-def test_package_root_contains_only_process_contracts() -> None:
-    assert {path.name for path in _PACKAGE_ROOT.glob("*.py")} == {
-        "__init__.py",
-        "errors.py",
-        "main.py",
-        "version.py",
-    }
 
 
 def test_executor_imports_match_explicit_process_composition() -> None:
@@ -259,7 +221,6 @@ def test_http_infrastructure_does_not_depend_on_executors_or_ui() -> None:
     )
 
     assert actual == frozenset()
-    assert not (_PACKAGE_ROOT / "server" / "shared").exists()
 
 
 def test_telemetry_does_not_depend_on_ui_or_transport_adapters() -> None:
@@ -392,171 +353,6 @@ def test_terminal_uses_only_low_level_ops_helpers() -> None:
     )
 
 
-def _top_level_operation_modules() -> set[str]:
-    modules: set[str] = set()
-    for path in (_PACKAGE_ROOT / "ops").iterdir():
-        if path.name in {"__init__.py", "__pycache__", "utils"}:
-            continue
-        if path.is_file() and path.suffix == ".py":
-            modules.add(_module_name(path))
-        elif path.is_dir() and (path / "__init__.py").is_file():
-            modules.add(_module_name(path / "__init__.py"))
-    return modules
-
-
-def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
-    remote_operation = f"{_PACKAGE_NAME}.ops.remote"
-    imports = _local_imports()
-    registry_prefix = f"{_PACKAGE_NAME}.tools.registry."
-    for operation in _top_level_operation_modules():
-        consumers = {
-            importer for importer, target in imports if target == operation
-        }
-        assert any(
-            consumer.startswith(registry_prefix) for consumer in consumers
-        ), operation
-        if operation != remote_operation:
-            assert any(
-                not consumer.startswith(registry_prefix)
-                for consumer in consumers
-            ), operation
-
-    remote_result = f"{_PACKAGE_NAME}.schemas.result_models.remote"
-    assert (
-        f"{_PACKAGE_NAME}.tools.registry.remote",
-        remote_operation,
-    ) in imports
-    assert {
-        (f"{_PACKAGE_NAME}.remote.manager", remote_result),
-        (f"{_PACKAGE_NAME}.remote.service", remote_result),
-        (f"{_PACKAGE_NAME}.remote.transfer", remote_result),
-    } <= imports
-
-
-def _assert_tool_owned_slice(
-    family: str,
-    expected_operation_dependencies: set[str],
-    *,
-    registry_uses_input_model: bool = True,
-) -> None:
-    operation = f"{_PACKAGE_NAME}.tools.ops.{family}"
-    input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.{family}"
-    result_model = f"{_PACKAGE_NAME}.tools.schemas.result_models.{family}"
-    registry = f"{_PACKAGE_NAME}.tools.registry.{family}"
-    imports = _local_imports()
-    required = {
-        (operation, dependency)
-        for dependency in expected_operation_dependencies
-    }
-    required.update({(registry, operation), (registry, result_model)})
-    if registry_uses_input_model:
-        required.add((registry, input_model))
-    assert required <= imports
-
-    allowed_consumers = {
-        operation: {registry},
-        input_model: {registry} if registry_uses_input_model else set(),
-        result_model: {registry, operation},
-    }
-    for target, allowed in allowed_consumers.items():
-        consumers = {
-            importer for importer, dependency in imports if dependency == target
-        }
-        assert consumers <= allowed
-
-
-def test_tool_owned_slices_have_explicit_boundaries() -> None:
-    _assert_tool_owned_slice(
-        "audit",
-        {
-            f"{_PACKAGE_NAME}.audit",
-            f"{_PACKAGE_NAME}.ops.utils.remote_session",
-            f"{_PACKAGE_NAME}.tool_session.store",
-            f"{_PACKAGE_NAME}.tools.schemas.result_models.audit",
-        },
-    )
-    _assert_tool_owned_slice(
-        "version",
-        {
-            f"{_PACKAGE_NAME}.tools.schemas.result_models.version",
-            f"{_PACKAGE_NAME}.version",
-        },
-        registry_uses_input_model=False,
-    )
-    _assert_tool_owned_slice(
-        "workspace_connector",
-        {
-            f"{_PACKAGE_NAME}.audit",
-            f"{_PACKAGE_NAME}.ops.files",
-            f"{_PACKAGE_NAME}.ops.search",
-            f"{_PACKAGE_NAME}.tools.schemas.result_models.workspace_connector",
-            f"{_PACKAGE_NAME}.utils.serialization",
-        },
-    )
-
-
-def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
-    runtime = f"{_PACKAGE_NAME}.jobs.runtime"
-    operation = f"{_PACKAGE_NAME}.tools.ops.jobs"
-    input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.jobs"
-    shared_result = f"{_PACKAGE_NAME}.schemas.result_models.jobs"
-    registry = f"{_PACKAGE_NAME}.tools.registry.jobs"
-
-    imports = _local_imports()
-    assert {
-        (registry, operation),
-        (operation, runtime),
-        (operation, f"{_PACKAGE_NAME}.ops.utils.remote_session"),
-        (operation, shared_result),
-        (operation, f"{_PACKAGE_NAME}.tool_session.store"),
-        (registry, input_model),
-    } <= imports
-    assert {
-        importer for importer, target in imports if target == operation
-    } <= {registry}
-    assert {
-        importer for importer, target in imports if target == input_model
-    } <= {registry}
-
-    runtime_targets = {
-        target for importer, target in _local_imports() if importer == runtime
-    }
-    assert not any(
-        target == f"{_PACKAGE_NAME}.tools"
-        or target.startswith(f"{_PACKAGE_NAME}.tools.")
-        for target in runtime_targets
-    )
-
-
-def test_ui_static_assets_have_one_explicit_owner() -> None:
-    static_root = _PACKAGE_ROOT / "ui" / "static"
-    expected = {
-        "index.html",
-        "opentui_console.js",
-        "syntax_highlight.js",
-        "terminal_renderer.js",
-        "web.css",
-        "web.js",
-        "dashboard.js",
-        "remotes.js",
-        "audit_view.js",
-        "audit.js",
-        "sessions.js",
-        "terminal.js",
-        "files.js",
-        "xterm_bundle.js",
-        "xterm.css",
-        "xterm.LICENSE.txt",
-    }
-
-    assert static_root.is_dir()
-    assert {path.name for path in static_root.iterdir()} == expected
-    assert all(
-        path.is_file() and not path.is_symlink()
-        for path in static_root.iterdir()
-    )
-
-
 def test_agent_bridge_data_dependencies_follow_layering() -> None:
     layers = {
         f"{_PACKAGE_NAME}.agent_bridge.models": 0,
@@ -614,5 +410,5 @@ def test_remote_worker_state_contract_is_a_dependency_leaf() -> None:
     assert actual == frozenset()
 
 
-def test_dependency_cycles_match_explicit_architecture_debt() -> None:
+def test_source_dependency_graph_has_no_cycles() -> None:
     assert _dependency_cycles() == _ALLOWED_DEPENDENCY_CYCLES

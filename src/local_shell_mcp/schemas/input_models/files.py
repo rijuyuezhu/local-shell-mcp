@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 FilePathArg = Annotated[
     str,
@@ -26,18 +26,6 @@ MaxEntriesArg = Annotated[
     int,
     Field(
         description="Maximum number of entries to return before reporting truncation. Bounded by the server configuration."
-    ),
-]
-StartLineArg = Annotated[
-    int | None,
-    Field(
-        description="Optional 1-based first line to include when reading text files. Omit to start at the first line."
-    ),
-]
-EndLineArg = Annotated[
-    int | None,
-    Field(
-        description="Optional 1-based final line to include when reading text files. Omit to read through the end."
     ),
 ]
 ToolSessionIdArg = Annotated[
@@ -78,20 +66,6 @@ HashlineEditInputArg = Annotated[
         description="Hashline edit text starting with [path#snapshot_id]. Copy the header/tag and displayed line:text rows from read/search; do not invent snapshot ids. Add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers."
     ),
 ]
-
-
-class ReadFileRequest(BaseModel):
-    """One UTF-8 file read request with an optional per-file line range."""
-
-    path: FilePathArg
-    """Workspace-relative or allowed absolute path to read."""
-
-    start_line: StartLineArg = None
-    """Optional 1-based first line to include for this file."""
-
-    end_line: EndLineArg = None
-    """Optional 1-based final line to include for this file."""
-
 
 FileContentArg = Annotated[
     str,

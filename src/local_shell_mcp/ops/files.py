@@ -12,20 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.settings import Settings, get_settings
-from ..schemas.input_models.files import ReadFileRequest
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
-    EditFileOutput,
     EditLinesOutput,
     EntryInfo,
     HashlineEditHunkOutput,
     HashlineEditOutput,
     LineRange,
     ListFilesOutput,
-    MultiEditFileOutput,
     ReadFileOutput,
     ReadLine,
-    ReadManyFilesOutput,
     WriteFileOutput,
 )
 from ..tool_session.bindings import LocalSessionBinding, RemoteSessionBinding
@@ -54,10 +50,6 @@ class FilesConfig:
     """Maximum directory entries returned by one list operation."""
     max_file_read_bytes: int
     """Maximum bytes decoded from one file read."""
-    max_read_many_files: int
-    """Maximum number of files accepted by one multi-read operation."""
-    max_read_many_total_bytes: int
-    """Maximum aggregate UTF-8 bytes returned by one multi-read operation."""
     max_file_write_bytes: int
     """Maximum UTF-8 bytes accepted by file write and edit operations."""
 
@@ -70,8 +62,6 @@ def files_config_from_settings(settings: Settings) -> FilesConfig:
         path_denylist=tuple(settings.path_denylist),
         max_directory_entries=settings.max_directory_entries,
         max_file_read_bytes=settings.max_file_read_bytes,
-        max_read_many_files=settings.max_read_many_files,
-        max_read_many_total_bytes=settings.max_read_many_total_bytes,
         max_file_write_bytes=settings.max_file_write_bytes,
     )
 
@@ -438,74 +428,6 @@ def read_file_execute(
         start_line,
         end_line,
         line_ranges,
-    )
-
-
-type _ReadManyFileSpec = (
-    ReadFileRequest
-    | tuple[str]
-    | tuple[str, int | None]
-    | tuple[str, int | None, int | None]
-)
-
-
-def _read_many_file_parts(
-    item: _ReadManyFileSpec,
-) -> tuple[str, int | None, int | None]:
-    """Normalize one read_many_files item into path and optional line range."""
-    if isinstance(item, ReadFileRequest):
-        return (
-            item.path,
-            item.start_line,
-            item.end_line,
-        )
-    return (
-        item[0],
-        item[1] if len(item) > 1 else None,
-        item[2] if len(item) > 2 else None,
-    )
-
-
-def _read_many_files_local(
-    config: FilesConfig,
-    store: ToolSessionStore,
-    binding: LocalSessionBinding | None,
-    files_to_read: Sequence[_ReadManyFileSpec],
-) -> ReadManyFilesOutput:
-    """Read many local files after one shared session admission."""
-    if len(files_to_read) > config.max_read_many_files:
-        raise ValueError(
-            f"Refusing to read {len(files_to_read)} files; max is {config.max_read_many_files}"
-        )
-
-    files: list[ReadFileOutput] = []
-    total_content_bytes = 0
-    for item_to_read in files_to_read:
-        path, start_line, end_line = _read_many_file_parts(item_to_read)
-        item = _read_file_local(
-            config, store, binding, path, start_line, end_line
-        )
-        content = item.content
-        total_content_bytes += len(content.encode("utf-8"))
-        if total_content_bytes > config.max_read_many_total_bytes:
-            raise ValueError(
-                f"Refusing to return {total_content_bytes} bytes from read_many_files; "
-                f"max is {config.max_read_many_total_bytes}"
-            )
-        files.append(item)
-    return ReadManyFilesOutput(
-        files=files, total_content_bytes=total_content_bytes
-    )
-
-
-def read_many_files_execute(
-    files_to_read: Sequence[_ReadManyFileSpec],
-    session_id: str | None = None,
-) -> ReadManyFilesOutput:
-    """Compatibility facade for multi-file local reads."""
-    config, store = _compat_files_dependencies()
-    return _read_many_files_local(
-        config, store, _local_binding(store, session_id), files_to_read
     )
 
 
@@ -889,51 +811,6 @@ def _validate_snapshot_for_edit(
         )
 
 
-def _edit_file_local(
-    config: FilesConfig,
-    path: str,
-    old: str,
-    new: str,
-    replace_all: bool = False,
-) -> EditFileOutput:
-    """Replace exact text in a sessionless local file from explicit policy."""
-    p = _resolve_file_path(config, None, path, must_exist=True)
-    with path_lock(p):
-        size = p.stat().st_size
-        if size > config.max_file_write_bytes:
-            raise ValueError(
-                f"Refusing to edit {size} bytes; max is {config.max_file_write_bytes}"
-            )
-        text = p.read_text(encoding="utf-8")
-        count = text.count(old)
-        if count == 0:
-            raise ValueError("old text not found")
-        if not replace_all and count > 1:
-            raise ValueError(
-                f"old text occurs {count} times; set replace_all=true or provide more context"
-            )
-        updated = (
-            text.replace(old, new) if replace_all else text.replace(old, new, 1)
-        )
-        updated_bytes = len(updated.encode("utf-8"))
-        if updated_bytes > config.max_file_write_bytes:
-            raise ValueError(
-                f"Refusing to write {updated_bytes} bytes; max is {config.max_file_write_bytes}"
-            )
-        _atomic_write_text(p, updated)
-    return EditFileOutput(
-        path=_display_file(config, p), replacements=count if replace_all else 1
-    )
-
-
-def edit_file_execute(
-    path: str, old: str, new: str, replace_all: bool = False
-) -> EditFileOutput:
-    """Compatibility facade for exact-text local edits."""
-    config, _ = _compat_files_dependencies()
-    return _edit_file_local(config, path, old, new, replace_all)
-
-
 def _hashline_file_snapshot(
     config: FilesConfig,
     binding: LocalSessionBinding | None,
@@ -1247,16 +1124,6 @@ def _hashline_edit_local(
         return _hashline_edit_locked(config, store, binding, operations)
 
 
-def hashline_edit_execute(
-    input_text: str, session_id: str | None = None
-) -> HashlineEditOutput:
-    """Compatibility facade for local hashline edits."""
-    config, store = _compat_files_dependencies()
-    return _hashline_edit_local(
-        config, store, _local_binding(store, session_id), input_text
-    )
-
-
 def _edit_lines_local(
     config: FilesConfig,
     store: ToolSessionStore,
@@ -1354,28 +1221,6 @@ def _edit_lines_local(
     )
 
 
-def edit_lines_execute(
-    path: str,
-    start_line: int,
-    end_line: int,
-    replacement: str,
-    snapshot_id: str | None = None,
-    session_id: str | None = None,
-) -> EditLinesOutput:
-    """Compatibility facade for local structured line edits."""
-    config, store = _compat_files_dependencies()
-    return _edit_lines_local(
-        config,
-        store,
-        _local_binding(store, session_id),
-        path,
-        start_line,
-        end_line,
-        replacement,
-        snapshot_id,
-    )
-
-
 async def hashline_edit_dispatch_execute(
     input_text: str, session_id: str | None = None
 ) -> HashlineEditOutput:
@@ -1439,53 +1284,6 @@ async def edit_lines_dispatch_execute(
         replacement,
         snapshot_id,
     )
-
-
-def _multi_edit_file_local(
-    config: FilesConfig, path: str, edits: list[dict]
-) -> MultiEditFileOutput:
-    """Apply sessionless exact-text replacements from explicit Files policy."""
-    p = _resolve_file_path(config, None, path, must_exist=True)
-    with path_lock(p):
-        size = p.stat().st_size
-        if size > config.max_file_write_bytes:
-            raise ValueError(
-                f"Refusing to edit {size} bytes; max is {config.max_file_write_bytes}"
-            )
-        text = p.read_text(encoding="utf-8")
-        total = 0
-        for edit in edits:
-            old = str(edit["old"])
-            new = str(edit["new"])
-            replace_all = bool(edit.get("replace_all", False))
-            count = text.count(old)
-            if count == 0:
-                raise ValueError(f"old text not found: {old[:80]!r}")
-            if not replace_all and count > 1:
-                raise ValueError(f"old text occurs {count} times: {old[:80]!r}")
-            text = (
-                text.replace(old, new)
-                if replace_all
-                else text.replace(old, new, 1)
-            )
-            total += count if replace_all else 1
-        updated_bytes = len(text.encode("utf-8"))
-        if updated_bytes > config.max_file_write_bytes:
-            raise ValueError(
-                f"Refusing to write {updated_bytes} bytes; max is {config.max_file_write_bytes}"
-            )
-        _atomic_write_text(p, text)
-    return MultiEditFileOutput(
-        path=_display_file(config, p), replacements=total
-    )
-
-
-def multi_edit_file_execute(
-    path: str, edits: list[dict]
-) -> MultiEditFileOutput:
-    """Compatibility facade for sessionless multi-edit."""
-    config, _ = _compat_files_dependencies()
-    return _multi_edit_file_local(config, path, edits)
 
 
 def _delete_file_or_dir_local(

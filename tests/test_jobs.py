@@ -5,12 +5,14 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import lifecycle as job_lifecycle
 from local_shell_mcp.jobs import managed as job_managed
+from local_shell_mcp.jobs import persistence as job_persistence
 from local_shell_mcp.jobs import runner as job_runner
 from local_shell_mcp.jobs import runner_bootstrap
 from local_shell_mcp.jobs import runtime as jobs_ops
@@ -36,6 +38,16 @@ from tests.helpers import python_shell_command
 pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
 
 
+def _load_store_untyped() -> dict[str, Any]:
+    """Expose mutable durable rows only to tests that intentionally corrupt state."""
+    return cast(dict[str, Any], job_persistence.load_store())
+
+
+def _attempt_paths_untyped(job_id: str, attempt: int) -> dict[str, Path]:
+    """Expose attempt paths as a homogeneous mapping for artifact tests."""
+    return cast(dict[str, Path], job_persistence.attempt_paths(job_id, attempt))
+
+
 def test_job_operation_cleanup_uses_one_authoritative_state_set():
     row: dict[str, object] = {}
     operation_id = job_state.begin_job_operation(row, "test")
@@ -51,7 +63,7 @@ def _create_session(workdir: str = ".") -> str:
 
 
 def test_runner_command_quotes_powershell_arguments():
-    command = jobs_ops._runner_command(
+    command = job_lifecycle._runner_command(
         [
             r"C:\Program Files\Python\python.exe",
             "-m",
@@ -72,21 +84,6 @@ def test_runner_command_quotes_powershell_arguments():
 def test_lifecycle_helpers_cover_platform_and_bounded_log_paths(
     tmp_path, monkeypatch
 ):
-    class ShellList:
-        def model_dump(self):
-            return {
-                "sessions": [
-                    {"session_id": "session-one"},
-                    {"shell_id": "shell-two"},
-                    {},
-                ]
-            }
-
-    assert job_lifecycle._active_shell_ids(ShellList()) == {
-        "session-one",
-        "shell-two",
-    }
-
     monkeypatch.setattr(
         job_lifecycle,
         "get_settings",
@@ -460,7 +457,7 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    paths = jobs_ops._attempt_paths("job_runner", 1)
+    paths = _attempt_paths_untyped("job_runner", 1)
     command = (
         "echo prefix-" + "x" * 100 + "-suffix"
         if os.name == "nt"
@@ -479,7 +476,7 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
     )
 
     with pytest.raises(SystemExit) as exit_info:
-        jobs_ops.run_job_runner_from_args(args)
+        job_runner.run_job_runner_from_args(args)
 
     status = json.loads(paths["status"].read_text(encoding="utf-8"))
     output = paths["log"].read_text(encoding="utf-8")
@@ -494,7 +491,7 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
 
 def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
     _configure_job_state(tmp_path, monkeypatch)
-    paths = jobs_ops._attempt_paths("job_failed", 1)
+    paths = _attempt_paths_untyped("job_failed", 1)
     command = (
         "echo failed-output & exit /b 7"
         if os.name == "nt"
@@ -515,7 +512,7 @@ def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
     )
 
     with pytest.raises(SystemExit) as exit_info:
-        jobs_ops.run_job_runner_from_args(args)
+        job_runner.run_job_runner_from_args(args)
 
     status = json.loads(paths["status"].read_text(encoding="utf-8"))
     output_lines = paths["log"].read_text(encoding="utf-8").splitlines()
@@ -531,7 +528,7 @@ async def test_terminal_job_output_remains_available_after_shell_exit(
 ):
     _configure_job_state(tmp_path, monkeypatch)
     session_id = _create_session()
-    paths = jobs_ops._attempt_paths("job_done", 1)
+    paths = _attempt_paths_untyped("job_done", 1)
     paths["log"].write_text("durable output\n", encoding="utf-8")
     paths["status"].write_text(
         json.dumps(
@@ -545,7 +542,7 @@ async def test_terminal_job_output_remains_available_after_shell_exit(
         ),
         encoding="utf-8",
     )
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_ops.JOB_STORE_VERSION,
             "jobs": [
@@ -586,9 +583,9 @@ async def test_terminal_job_output_remains_available_after_shell_exit(
 
 def test_job_store_recovers_from_backup_and_migrates_v1(tmp_path, monkeypatch):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops._job_store_path().parent.mkdir(parents=True, exist_ok=True)
-    jobs_ops._job_store_path().write_text("{broken", encoding="utf-8")
-    jobs_ops._job_store_backup_path().write_text(
+    job_persistence.job_store_path().parent.mkdir(parents=True, exist_ok=True)
+    job_persistence.job_store_path().write_text("{broken", encoding="utf-8")
+    job_persistence.job_store_backup_path().write_text(
         json.dumps(
             {
                 "version": 1,
@@ -604,7 +601,7 @@ def test_job_store_recovers_from_backup_and_migrates_v1(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    store = jobs_ops._load_store()
+    store = _load_store_untyped()
 
     assert store["version"] == jobs_ops.JOB_STORE_VERSION
     assert store["jobs"][0]["job_id"] == "legacy"
@@ -614,20 +611,20 @@ def test_job_store_refuses_to_reset_when_main_and_backup_are_corrupt(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops._job_store_path().parent.mkdir(parents=True, exist_ok=True)
-    jobs_ops._job_store_path().write_text("{broken", encoding="utf-8")
-    jobs_ops._job_store_backup_path().write_text("[]", encoding="utf-8")
+    job_persistence.job_store_path().parent.mkdir(parents=True, exist_ok=True)
+    job_persistence.job_store_path().write_text("{broken", encoding="utf-8")
+    job_persistence.job_store_backup_path().write_text("[]", encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="refusing to reset"):
-        jobs_ops._load_store()
+        _load_store_untyped()
 
 
 def test_job_store_retention_keeps_active_and_newest_finished(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch, max_jobs=2)
-    old_paths = jobs_ops._attempt_paths("old", 1)
-    new_paths = jobs_ops._attempt_paths("new", 1)
+    old_paths = _attempt_paths_untyped("old", 1)
+    new_paths = _attempt_paths_untyped("new", 1)
     for path in [*old_paths.values(), *new_paths.values()]:
         path.write_text("artifact", encoding="utf-8")
     store = {
@@ -654,8 +651,8 @@ def test_job_store_retention_keeps_active_and_newest_finished(
         ],
     }
 
-    jobs_ops._save_store(store)
-    persisted = jobs_ops._load_store()
+    job_persistence.save_store(store)
+    persisted = _load_store_untyped()
 
     assert {row["job_id"] for row in persisted["jobs"]} == {"active", "new"}
     assert not any(path.exists() for path in old_paths.values())
@@ -688,9 +685,9 @@ def test_job_store_retention_keeps_unconfirmed_lost_shell(
         ],
     }
 
-    jobs_ops._save_store(store)
+    job_persistence.save_store(store)
 
-    assert [row["job_id"] for row in jobs_ops._load_store()["jobs"]] == [
+    assert [row["job_id"] for row in _load_store_untyped()["jobs"]] == [
         "lost-live"
     ]
 
@@ -715,7 +712,7 @@ async def test_job_start_failure_is_persisted_as_failed(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="tmux unavailable"):
         await jobs_ops.job_start_execute(session_id, "echo hello")
 
-    rows = jobs_ops._load_store()["jobs"]
+    rows = _load_store_untyped()["jobs"]
     assert len(rows) == 1
     assert rows[0]["status"] == "failed"
     assert rows[0]["completed_at"] is not None
@@ -726,7 +723,7 @@ async def test_job_start_failure_is_persisted_as_failed(tmp_path, monkeypatch):
 async def test_interrupted_start_recovers_active_shell(tmp_path, monkeypatch):
     _configure_job_state(tmp_path, monkeypatch)
     session_id = _create_session()
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_ops.JOB_STORE_VERSION,
             "jobs": [
@@ -771,7 +768,7 @@ async def test_job_retry_failure_is_persisted_and_clears_pending_state(
 ):
     _configure_job_state(tmp_path, monkeypatch)
     session_id = _create_session()
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_ops.JOB_STORE_VERSION,
             "jobs": [
@@ -813,7 +810,7 @@ async def test_job_retry_failure_is_persisted_and_clears_pending_state(
     with pytest.raises(RuntimeError, match="retry shell unavailable"):
         await jobs_ops.job_retry_execute(session_id, "retry-failure")
 
-    job = jobs_ops._load_store()["jobs"][0]
+    job = _load_store_untyped()["jobs"][0]
     assert job["status"] == "failed"
     assert job["attempts"] == 2
     assert job["completed_at"] is not None
@@ -830,8 +827,8 @@ async def test_interrupted_retry_adopts_active_pending_attempt(
 ):
     _configure_job_state(tmp_path, monkeypatch)
     session_id = _create_session()
-    paths = jobs_ops._attempt_paths("retry-recover", 2)
-    jobs_ops._save_store(
+    paths = _attempt_paths_untyped("retry-recover", 2)
+    job_persistence.save_store(
         {
             "version": jobs_ops.JOB_STORE_VERSION,
             "jobs": [
@@ -875,7 +872,7 @@ async def test_interrupted_retry_adopts_active_pending_attempt(
     assert recovered.attempts == 2
     assert recovered.last_started_at is not None
     assert "recovered retry" in (recovered.error or "")
-    job = jobs_ops._load_store()["jobs"][0]
+    job = _load_store_untyped()["jobs"][0]
     assert job["shell_id"] == "retry-shell"
     assert job["log_path"] == str(paths["log"])
     assert not any(key.startswith("pending_") for key in job)
@@ -901,7 +898,7 @@ def test_concurrent_job_store_transactions_do_not_lose_records(
     with ThreadPoolExecutor(max_workers=8) as executor:
         list(executor.map(append, range(32)))
 
-    persisted = jobs_ops._load_store()["jobs"]
+    persisted = _load_store_untyped()["jobs"]
     assert {row["job_id"] for row in persisted} == {
         f"job-{index}" for index in range(32)
     }
@@ -914,9 +911,11 @@ async def test_job_start_does_not_launch_shell_for_invalid_store(
     _configure_job_state(tmp_path, monkeypatch)
     session_id = _create_session()
     invalid = json.dumps({"version": 99, "jobs": []})
-    jobs_ops._job_store_path().parent.mkdir(parents=True, exist_ok=True)
-    jobs_ops._job_store_path().write_text(invalid, encoding="utf-8")
-    jobs_ops._job_store_backup_path().write_text(invalid, encoding="utf-8")
+    job_persistence.job_store_path().parent.mkdir(parents=True, exist_ok=True)
+    job_persistence.job_store_path().write_text(invalid, encoding="utf-8")
+    job_persistence.job_store_backup_path().write_text(
+        invalid, encoding="utf-8"
+    )
     started = False
 
     async def fake_start(
@@ -939,7 +938,7 @@ async def test_job_start_does_not_launch_shell_for_invalid_store(
         await jobs_ops.job_start_execute(session_id, "echo must-not-run")
 
     assert started is False
-    runtime_dir = jobs_ops._job_runtime_dir()
+    runtime_dir = job_persistence.job_runtime_dir()
     assert not list(runtime_dir.iterdir())
 
 
@@ -960,8 +959,10 @@ async def test_job_start_kills_shell_when_running_state_cannot_be_committed(
     ):
         assert owner_session_id == session_id
         invalid = json.dumps({"version": 99, "jobs": []})
-        jobs_ops._job_store_path().write_text(invalid, encoding="utf-8")
-        jobs_ops._job_store_backup_path().write_text(invalid, encoding="utf-8")
+        job_persistence.job_store_path().write_text(invalid, encoding="utf-8")
+        job_persistence.job_store_backup_path().write_text(
+            invalid, encoding="utf-8"
+        )
         return StartPersistentShellOutput(
             shell_id="launched-shell", name=name, cwd=cwd, command=command
         )
@@ -981,7 +982,7 @@ async def test_job_start_kills_shell_when_running_state_cannot_be_committed(
         await jobs_ops.job_start_execute(session_id, "echo launched")
 
     assert killed == ["launched-shell"]
-    assert not list(jobs_ops._job_runtime_dir().iterdir())
+    assert not list(job_persistence.job_runtime_dir().iterdir())
 
 
 @pytest.mark.asyncio
@@ -1601,7 +1602,7 @@ async def test_job_list_applies_durable_completion_when_inventory_is_uncertain(
 ):
     _configure_job_state(tmp_path, monkeypatch)
     session_id = _create_session(str(tmp_path))
-    paths = jobs_ops._attempt_paths("job_durable", 1)
+    paths = _attempt_paths_untyped("job_durable", 1)
     paths["status"].write_text(
         json.dumps(
             {
@@ -1614,7 +1615,7 @@ async def test_job_list_applies_durable_completion_when_inventory_is_uncertain(
         ),
         encoding="utf-8",
     )
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_ops.JOB_STORE_VERSION,
             "jobs": [
@@ -1650,7 +1651,7 @@ async def test_job_list_applies_durable_completion_when_inventory_is_uncertain(
     assert result.jobs[0].status == "succeeded"
     assert result.jobs[0].exit_code == 0
     assert result.jobs[0].completed_at == 5.0
-    assert jobs_ops._load_store()["jobs"][0]["status"] == "succeeded"
+    assert _load_store_untyped()["jobs"][0]["status"] == "succeeded"
 
 
 @pytest.mark.asyncio
@@ -1878,7 +1879,7 @@ async def test_job_start_preserves_existing_jobs_when_inventory_is_uncertain(
         "updated_at": 1.0,
         "attempts": 1,
     }
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [existing]}
     )
 
@@ -1907,7 +1908,7 @@ async def test_job_start_preserves_existing_jobs_when_inventory_is_uncertain(
     )
 
     started = await jobs_ops.job_start_execute(session_id, "echo new")
-    rows = jobs_ops._load_store()["jobs"]
+    rows = _load_store_untyped()["jobs"]
 
     assert started.status == "running"
     assert {row["job_id"] for row in rows} == {"job_existing", started.job_id}
@@ -1937,7 +1938,7 @@ async def test_job_start_does_not_refresh_other_owner_transitions(
         "updated_at": 1.0,
         "attempts": 1,
     }
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [unrelated]}
     )
 
@@ -1966,7 +1967,7 @@ async def test_job_start_does_not_refresh_other_owner_transitions(
     )
 
     await jobs_ops.job_start_execute(session_id, "echo new")
-    rows = jobs_ops._load_store()["jobs"]
+    rows = _load_store_untyped()["jobs"]
     unrelated_after = next(
         row for row in rows if row["job_id"] == "job_unrelated"
     )
@@ -2113,7 +2114,9 @@ async def test_job_tail_preserves_running_state_when_inventory_is_uncertain(
         "updated_at": 1.0,
         "attempts": 1,
     }
-    jobs_ops._save_store({"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]})
+    job_persistence.save_store(
+        {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]}
+    )
 
     async def uncertain_inventory():
         return None
@@ -2133,7 +2136,7 @@ async def test_job_tail_preserves_running_state_when_inventory_is_uncertain(
     result = await jobs_ops.job_tail_execute(session_id, "job_running")
 
     assert result.job.status == "running"
-    assert jobs_ops._load_store()["jobs"][0]["status"] == "running"
+    assert _load_store_untyped()["jobs"][0]["status"] == "running"
 
 
 @pytest.mark.asyncio
@@ -2156,7 +2159,9 @@ async def test_job_tail_preserves_running_state_when_live_shell_capture_fails(
         "updated_at": 1.0,
         "attempts": 1,
     }
-    jobs_ops._save_store({"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]})
+    job_persistence.save_store(
+        {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]}
+    )
 
     async def live_inventory():
         return {"shell_running"}
@@ -2174,7 +2179,7 @@ async def test_job_tail_preserves_running_state_when_live_shell_capture_fails(
     )
 
     result = await jobs_ops.job_tail_execute(session_id, "job_running")
-    stored = jobs_ops._load_store()["jobs"][0]
+    stored = _load_store_untyped()["jobs"][0]
 
     assert result.job.status == "running"
     assert stored["status"] == "running"
@@ -2202,7 +2207,9 @@ async def test_job_tail_marks_lost_only_after_authoritative_shell_absence(
         "updated_at": 1.0,
         "attempts": 1,
     }
-    jobs_ops._save_store({"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]})
+    job_persistence.save_store(
+        {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]}
+    )
 
     async def absent_inventory():
         return set()
@@ -2220,7 +2227,7 @@ async def test_job_tail_marks_lost_only_after_authoritative_shell_absence(
     )
 
     result = await jobs_ops.job_tail_execute(session_id, "job_running")
-    stored = jobs_ops._load_store()["jobs"][0]
+    stored = _load_store_untyped()["jobs"][0]
 
     assert result.job.status == "lost"
     assert stored["status"] == "lost"
@@ -2277,7 +2284,9 @@ async def test_job_retry_rejects_running_job_when_inventory_is_uncertain(
         "updated_at": 1.0,
         "attempts": 1,
     }
-    jobs_ops._save_store({"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]})
+    job_persistence.save_store(
+        {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]}
+    )
 
     async def uncertain_inventory():
         return None
@@ -2298,7 +2307,7 @@ async def test_job_retry_rejects_running_job_when_inventory_is_uncertain(
     with pytest.raises(RuntimeError, match="job is still active"):
         await jobs_ops.job_retry_execute(session_id, "job_running")
 
-    assert jobs_ops._load_store()["jobs"][0]["status"] == "running"
+    assert _load_store_untyped()["jobs"][0]["status"] == "running"
 
 
 def test_managed_job_validation_and_legacy_lost_recovery():
@@ -2417,13 +2426,14 @@ def test_managed_job_lease_registry_rejects_duplicates_and_releases(
     monkeypatch.setattr(job_managed, "ManagedJobLease", FakeLease)
     job_managed.managed_jobs_runtime().leases.clear()
 
-    lease = job_managed._acquire_managed_job_lease("job_registry")
+    runtime = job_managed.managed_jobs_runtime()
+    lease = runtime.acquire_lease("job_registry")
     assert lease.job_id == "job_registry"
     with pytest.raises(RuntimeError, match="already held"):
-        job_managed._acquire_managed_job_lease("job_registry")
+        runtime.acquire_lease("job_registry")
 
-    job_managed._release_managed_job_lease("job_registry")
-    job_managed._release_managed_job_lease("job_registry")
+    runtime.release_lease("job_registry")
+    runtime.release_lease("job_registry")
 
     assert events == [
         ("acquire", "job_registry"),
@@ -2672,7 +2682,7 @@ async def test_managed_job_failure_result_bounds_and_launch_rollback(
     assert after == before
     runtime_files = {
         path.name
-        for path in jobs_ops._job_runtime_dir().glob("*-attempt-1.log")
+        for path in job_persistence.job_runtime_dir().glob("*-attempt-1.log")
     }
     assert runtime_files == {
         f"{failed.job_id}-attempt-1.log",

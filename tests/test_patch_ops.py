@@ -3,10 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.ops.patch.envelope import (
-    git_apply_command,
-    normalize_patch_text,
-)
+from local_shell_mcp.ops.patch.envelope import normalize_patch_text
 
 
 def _git_apply(root: Path, patch: str) -> None:
@@ -17,18 +14,6 @@ def _git_apply(root: Path, patch: str) -> None:
         ["git", "apply", "--check", str(patch_path)], cwd=root, check=True
     )
     subprocess.run(["git", "apply", str(patch_path)], cwd=root, check=True)
-
-
-def test_git_apply_command_keeps_directory_as_separate_argument() -> None:
-    command = git_apply_command(
-        "git", "'patch file.diff'", "'nested dir'", check=True
-    )
-
-    assert (
-        command
-        == "git apply --check --directory 'nested dir' 'patch file.diff'"
-    )
-    assert "--directory=" not in command
 
 
 def test_standard_unified_diff_passes_through() -> None:

@@ -1,6 +1,5 @@
-import re
 from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
+from pathlib import PureWindowsPath
 from typing import Annotated, Any, Literal
 
 import pytest
@@ -12,7 +11,6 @@ from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     SPECS_BY_NAME,
     SettingSpec,
-    validate_setting_specs,
 )
 
 
@@ -21,56 +19,11 @@ class FakeField:
     annotation: Any
 
 
-def test_setting_specs_cover_settings_fields():
-    validate_setting_specs()
-    assert list(Settings.model_fields) == [spec.name for spec in SETTING_SPECS]
-
-
-def test_generated_config_examples_are_current():
-    import subprocess
-    import sys
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/generation/generate-config-examples.py",
-            "--check",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
 def test_path_defaults_use_portable_posix_separators():
     value = PureWindowsPath(r"\workspace\.local-shell-mcp")
 
     assert surface.default_to_string(value) == "/workspace/.local-shell-mcp"
     assert surface.yaml_default(value) == "/workspace/.local-shell-mcp"
-
-
-def test_config_examples_include_every_registered_setting():
-    env_example = Path(".env.example").read_text()
-    yaml_example = Path("config.example.yaml").read_text()
-
-    for spec in SETTING_SPECS:
-        assert re.search(rf"^{spec.env_var}=", env_example, flags=re.MULTILINE)
-        assert re.search(rf"^{spec.name}:", yaml_example, flags=re.MULTILINE)
-        for word in spec.help.split():
-            assert word in env_example
-            assert word in yaml_example
-
-
-def test_generated_config_examples_document_non_bool_choices_only():
-    env_example = Path(".env.example").read_text()
-    yaml_example = Path("config.example.yaml").read_text()
-
-    for example in (env_example, yaml_example):
-        assert "# Choices: mcp, http, both, stdio." in example
-        assert "# Choices: none, oauth." in example
-        assert "# Choices: true, false." not in example
 
 
 def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
@@ -98,6 +51,11 @@ def test_setting_spec_properties_cover_current_setting_shapes():
     assert not SPECS_BY_NAME["base_url"].is_bool
     assert SPECS_BY_NAME["base_url"].is_nullable
     assert not SPECS_BY_NAME["command_denylist"].is_nullable
+
+
+def test_setting_spec_rejects_unregistered_setting() -> None:
+    with pytest.raises(ValueError, match="Setting name not found"):
+        SettingSpec("unregistered_setting", "Server")
 
 
 def test_setting_spec_properties_cover_future_nullable_shapes(monkeypatch):

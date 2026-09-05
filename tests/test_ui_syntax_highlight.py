@@ -25,8 +25,6 @@ def test_syntax_highlighter_is_loaded_before_browser_app_and_uses_safe_dom() -> 
     assert "innerHTML" not in script
     assert ".syntax-keyword" in css
     assert ".syntax-diff-add" in css
-    assert 'body[data-wallpaper="grid"]' in css
-    assert 'body[data-wallpaper="none"]' in css
 
 
 @pytest.mark.skipif(

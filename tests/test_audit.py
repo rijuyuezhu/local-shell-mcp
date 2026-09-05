@@ -9,12 +9,8 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.audit as audit_module
 import local_shell_mcp.audit.payloads as audit_payload_module
 from local_shell_mcp.audit import (
-    _AUDIT_BINARY_KEY,
-    _AUDIT_CYCLE_KEY,
-    _coalesce_audit_records,
     audit,
     audit_call_context,
     audit_query_snapshot,
@@ -27,6 +23,11 @@ from local_shell_mcp.audit import (
     summarize_audit_entry,
 )
 from local_shell_mcp.audit import core as audit_core
+from local_shell_mcp.audit.core import (
+    _AUDIT_BINARY_KEY,
+    _AUDIT_CYCLE_KEY,
+    _coalesce_audit_records,
+)
 from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.tool_session import get_tool_session_store
@@ -133,19 +134,6 @@ def _join_processes(processes: list[Any], *, timeout_s: float = 90.0) -> None:
     assert failures == []
 
 
-def test_audit_package_facade_preserves_public_and_legacy_attributes() -> None:
-    assert audit_module.audit is audit_core.audit
-    assert audit_module.query_audit is audit_core.query_audit
-    assert audit_module._AUDIT_BINARY_KEY == audit_core._AUDIT_BINARY_KEY
-    assert (
-        audit_module._AUDIT_PAYLOAD_SWEEP_TIMES
-        is audit_core._AUDIT_PAYLOAD_SWEEP_TIMES
-    )
-    assert audit_module.time is audit_core.time
-    assert "audit" in dir(audit_module)
-    assert "_AUDIT_BINARY_KEY" in dir(audit_module)
-
-
 def test_audit_dual_writes_session_log_but_keeps_global_extras(
     tmp_path, monkeypatch
 ):
@@ -220,11 +208,6 @@ def test_audit_skips_invalid_session_ids_without_leaving_running_calls(
     assert entry["status"] == "failed"
     assert entry["session"] == "bad/id"
     assert not (tmp_path / ".state" / "sessions" / "bad").exists()
-
-
-def test_audit_package_facade_rejects_unknown_attributes() -> None:
-    with pytest.raises(AttributeError):
-        audit_module.__getattr__("not_an_audit_attribute")
 
 
 def test_audit_uniformly_redacts_secrets_but_retains_fingerprints(
@@ -816,8 +799,8 @@ def test_audit_payload_orphan_gc_and_symlink_replacement(tmp_path, monkeypatch):
         payload_retention_s=60,
     )
     settings = get_settings()
-    audit_module._AUDIT_PAYLOAD_SWEEP_TIMES.clear()
-    monkeypatch.setattr(audit_module.time, "monotonic", lambda: 1.0)
+    audit_core._AUDIT_PAYLOAD_SWEEP_TIMES.clear()
+    monkeypatch.setattr(audit_core.time, "monotonic", lambda: 1.0)
     settings.audit_payload_dir.mkdir(parents=True, exist_ok=True)
     orphan = settings.audit_payload_dir / f"{'a' * 64}.json.gz"
     orphan.write_bytes(b"orphan")

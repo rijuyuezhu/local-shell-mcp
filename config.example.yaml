@@ -122,10 +122,6 @@ max_directory_entries: 5000
 max_glob_results: 5000
 # Maximum tree-view entries.
 max_tree_entries: 5000
-# Maximum files allowed in one internal multi-file read operation.
-max_read_many_files: 100
-# Maximum total byte limit for one internal multi-file read operation.
-max_read_many_total_bytes: 5000000
 # Todo-list item limit.
 max_todos: 1000
 # Todo-list total byte limit.
@@ -230,7 +226,7 @@ agent_dynamic_skill_tools: true
 # Tool executables.
 # Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.
 shell_executable: "/bin/bash"
-# tmux executable.
+# tmux executable required for persistent shells on POSIX systems.
 tmux_bin: "tmux"
 # ripgrep executable.
 rg_bin: "rg"

@@ -27,7 +27,6 @@ from .records import (
     new_snapshot_id,
     session_from_payload,
     snapshot_from_payload,
-    valid_session_id,
 )
 from .records import (
     generate_session_id as _generate_session_id,
@@ -77,21 +76,6 @@ SESSION_TERMINATION_PROMPT = (
     "tools for this session. Tell the user that execution was terminated by "
     "the human operator."
 )
-
-
-def generate_session_id() -> str:
-    """Compatibility facade for opaque session-id allocation."""
-    return _generate_session_id()
-
-
-def _valid_session_id(value: Any) -> str | None:
-    """Compatibility facade for durable session-id validation."""
-    return valid_session_id(value)
-
-
-def _new_snapshot_id() -> str:
-    """Compatibility facade for opaque snapshot-id allocation."""
-    return new_snapshot_id()
 
 
 class UnknownAgentSessionError(ValueError):
@@ -385,7 +369,7 @@ class ToolSessionStore:
                         f"{maximum}; end an active session or wait for retention cleanup"
                     )
                 for _ in range(16):
-                    session_id = generate_session_id()
+                    session_id = _generate_session_id()
                     if not self._metadata_path(session_id).exists():
                         break
                 else:
@@ -783,7 +767,7 @@ class ToolSessionStore:
                 self._require_session_locked(session_id)
                 return self._snapshot_repository.record(
                     session_id=session_id,
-                    snapshot_id=_new_snapshot_id(),
+                    snapshot_id=new_snapshot_id(),
                     path=path,
                     file_sha256=file_sha256,
                     total_lines=total_lines,

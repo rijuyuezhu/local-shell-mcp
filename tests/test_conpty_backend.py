@@ -114,6 +114,10 @@ async def _wait_for_output(shell_id: str, marker: bytes) -> bytes:
     raise AssertionError(f"ConPTY output did not contain {marker!r}")
 
 
+async def _listed_shell_ids() -> set[str]:
+    return {shell.shell_id for shell in (await conpty.list_shells()).shells}
+
+
 def test_conpty_shell_lease_reports_live_then_dead(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -183,7 +187,7 @@ async def test_conpty_spawn_cancellation_waits_and_closes_process(
 
     assert process.closed is True
     assert process.close_calls[-1] is True
-    assert conpty.has_session("cancelled-shell") is False
+    assert "cancelled-shell" not in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == set()
 
 
@@ -224,12 +228,12 @@ async def test_conpty_spawn_cancellation_keeps_uncertain_cleanup_visible(
     ):
         await task
 
-    assert conpty.has_session("cancelled-cleanup-uncertain") is True
+    assert "cancelled-cleanup-uncertain" in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == {"cancelled-cleanup-uncertain"}
 
     killed = await conpty.kill_shell("cancelled-cleanup-uncertain")
     assert killed.killed is True
-    assert conpty.has_session("cancelled-cleanup-uncertain") is False
+    assert "cancelled-cleanup-uncertain" not in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == set()
 
 
@@ -330,7 +334,7 @@ async def test_conpty_failed_kill_retains_lease_until_retry_succeeds(
     assert first.stderr is not None
     assert "close failed" in first.stderr
     assert "termination was not confirmed" in first.stderr
-    assert conpty.has_session("retry-kill") is True
+    assert "retry-kill" in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == {"retry-kill"}
     assert [
         shell.shell_id for shell in (await conpty.list_shells()).shells
@@ -341,7 +345,7 @@ async def test_conpty_failed_kill_retains_lease_until_retry_succeeds(
     second = await conpty.kill_shell("retry-kill")
 
     assert second.killed is True
-    assert conpty.has_session("retry-kill") is False
+    assert "retry-kill" not in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == set()
     assert process.close_calls == [True, True]
 
@@ -362,7 +366,7 @@ async def test_conpty_reports_unsupported_resize_without_closing(
     )
     assert attachment.resize(120, 40) is False
     attachment.close_sync()
-    assert conpty.has_session("no-resize") is True
+    assert "no-resize" in await _listed_shell_ids()
 
 
 @pytest.mark.asyncio
@@ -423,7 +427,7 @@ async def test_conpty_reader_start_failure_closes_process(
             command=None,
         )
 
-    assert conpty.has_session("reader-start-failure") is False
+    assert "reader-start-failure" not in await _listed_shell_ids()
     assert process.closed is True
     assert process.close_calls[-1] is True
 
@@ -451,13 +455,13 @@ async def test_conpty_reader_start_failure_keeps_unconfirmed_cleanup_visible(
             command=None,
         )
 
-    assert conpty.has_session("reader-cleanup-uncertain") is True
+    assert "reader-cleanup-uncertain" in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == {"reader-cleanup-uncertain"}
 
     killed = await conpty.kill_shell("reader-cleanup-uncertain")
 
     assert killed.killed is True
-    assert conpty.has_session("reader-cleanup-uncertain") is False
+    assert "reader-cleanup-uncertain" not in await _listed_shell_ids()
     assert conpty.authoritative_shell_ids() == set()
 
 
@@ -474,10 +478,13 @@ async def test_conpty_reader_failure_reaps_session(monkeypatch, tmp_path):
         shell_id="reader-failure", cwd=tmp_path, command=None
     )
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline and conpty.has_session("reader-failure"):
+    while (
+        time.monotonic() < deadline
+        and "reader-failure" in await _listed_shell_ids()
+    ):
         await asyncio.sleep(0.01)
 
-    assert conpty.has_session("reader-failure") is False
+    assert "reader-failure" not in await _listed_shell_ids()
     assert process.closed is True
     assert process.close_calls[-1] is True
     assert conpty.authoritative_shell_ids() == set()

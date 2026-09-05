@@ -13,7 +13,6 @@ POSIX_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["POSIX_TUI_EXECUTABLE_NAME"])
 WINDOWS_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["WINDOWS_TUI_EXECUTABLE_NAME"])
 CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = REPO / ".github" / "workflows" / "release.yml"
-DOCKERFILE = REPO / "Dockerfile"
 PYPROJECT = REPO / "pyproject.toml"
 EXPECTED_BINARY_ARTIFACTS = {
     "linux-x86_64",
@@ -29,7 +28,6 @@ EXPECTED_PLATFORM_WHEELS = {
     "macos-aarch64": "macosx_11_0_arm64",
     "windows-x86_64": "win_amd64",
 }
-EXPECTED_DOCKER_PLATFORMS = {"linux/amd64", "linux/arm64"}
 
 
 def _section(text: str, start_pattern: str, end_pattern: str) -> str:
@@ -71,21 +69,6 @@ def _platform_wheel_matrix(text: str) -> dict[str, str]:
         flags=re.MULTILINE,
     )
     return dict(pairs)
-
-
-def _release_docker_platforms(text: str) -> set[str]:
-    docker_job = _section(
-        text,
-        r"^  publish-docker-platform:\n",
-        r"^  [A-Za-z0-9_-]+:\n",
-    )
-    return set(
-        re.findall(
-            r"^          - platform: ([A-Za-z0-9_/-]+)$",
-            docker_job,
-            flags=re.MULTILINE,
-        )
-    )
 
 
 def _report_mismatch(kind: str, expected: set[str], actual: set[str]) -> int:
@@ -154,7 +137,6 @@ def _platform_wheel_fragments() -> tuple[str, ...]:
 def main() -> int:
     ci_text = CI_WORKFLOW.read_text(encoding="utf-8")
     release_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     project_python = _project_minimum_python_version()
     release_python_status = _require_fragments(
         "Python baseline",
@@ -176,11 +158,6 @@ def main() -> int:
         EXPECTED_PLATFORM_WHEELS,
         _platform_wheel_matrix(ci_text),
     )
-    docker_status = _report_mismatch(
-        "Docker platform",
-        EXPECTED_DOCKER_PLATFORMS,
-        _release_docker_platforms(release_text),
-    )
     opentui_release_status = _require_fragments(
         "OpenTUI sidecar packaging",
         _section(
@@ -194,15 +171,6 @@ def main() -> int:
             "bun run build:tui",
             f"ui-opentui/dist/{WINDOWS_TUI_EXECUTABLE_NAME}",
             f"ui-opentui/dist/{POSIX_TUI_EXECUTABLE_NAME}",
-            "helper_platform: linux/amd64",
-            "helper_platform: linux/arm64",
-            "helper_tag: linux-x86_64",
-            "helper_tag: linux-aarch64",
-            "scripts/release/build-tmux-helper.sh",
-            "--add-binary",
-            "pyi-archive_viewer",
-            "local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux",
-            "TMUX-LICENSE.txt",
             "OPENTUI-NOTICES.txt",
             "BUN-1.3.14-LICENSE.md",
         ),
@@ -273,37 +241,24 @@ def main() -> int:
             "files: dist/*",
         ),
     )
-    opentui_docker_status = _require_fragments(
-        "OpenTUI Docker packaging",
-        dockerfile,
-        (
-            "FROM oven/bun:1.3.14 AS opentui-build",
-            "bun install --frozen-lockfile",
-            "bun run build:tui",
-            f"/usr/local/bin/{POSIX_TUI_EXECUTABLE_NAME}",
-        ),
-    )
     if any(
         (
             release_python_status,
             binary_status,
             release_wheel_status,
             ci_wheel_status,
-            docker_status,
             opentui_release_status,
             platform_wheel_release_status,
             platform_wheel_ci_status,
             package_smoke_status,
             universal_package_status,
             atomic_release_status,
-            opentui_docker_status,
         )
     ):
         return 1
     print(
         "Release workflow matches the project Python baseline and covers expected "
-        "universal and platform wheels, binary artifacts, Docker platforms, "
-        "OpenTUI sidecars, and bundled Linux tmux helpers."
+        "universal and platform wheels, binary artifacts, and OpenTUI sidecars."
     )
     return 0
 

@@ -69,10 +69,7 @@ source-include = [
     "tests/test_coverage_gate.py",
     "tests/test_native_provenance.py",
     "tests/test_tmux_helper.py",
-    "scripts/release/build-tmux-helper.sh",
-    "scripts/release/tmux-helper.Dockerfile",
     "src/local_shell_mcp/helpers/README.md",
-    "src/local_shell_mcp/helpers/tmux.LICENSE",
     "src/local_shell_mcp/helpers/opentui.NOTICES",
     "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
     "docs/maintenance/native-artifact-provenance.md",
@@ -83,7 +80,6 @@ source-exclude = [
     "/ui-opentui/node_modules",
     "/ui-opentui/dist",
     "/ui-opentui/coverage",
-    "/src/local_shell_mcp/helpers/linux-*/tmux",
 ]
 
 [project.urls]

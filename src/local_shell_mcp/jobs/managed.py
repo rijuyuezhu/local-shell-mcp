@@ -256,16 +256,6 @@ def _refresh_job_status(
     )
 
 
-def _acquire_managed_job_lease(job_id: str) -> ManagedJobLease:
-    """Acquire one lease through the configured managed Jobs owner."""
-    return managed_jobs_runtime().acquire_lease(job_id)
-
-
-def _release_managed_job_lease(job_id: str) -> None:
-    """Release one lease through the configured managed Jobs owner."""
-    managed_jobs_runtime().release_lease(job_id)
-
-
 def register_managed_job_handler(kind: str, handler: ManagedJobHandler) -> None:
     """Register a handler on the configured controller-owned Jobs runtime."""
     managed_jobs_runtime().register_handler(kind, handler)

@@ -2,8 +2,6 @@
 
 This guide runs `local-shell-mcp` locally, exposes it through Cloudflare Tunnel, and connects ChatGPT to the public `/mcp` endpoint.
 
-For a container deployment, use [Docker Compose](docker-compose.md) instead.
-
 ## Prerequisites
 
 You need:
@@ -92,7 +90,7 @@ The public MCP endpoint is:
 https://your-public-host.example.com/mcp
 ```
 
-The Cloudflare guide also covers the Docker target and common routing mistakes.
+The Cloudflare guide also covers common routing mistakes.
 
 ## 5. Keep it running
 

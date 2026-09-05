@@ -12,6 +12,8 @@ from typing import Any
 import pytest
 
 import local_shell_mcp.ops.transfer as transfer_ops
+import local_shell_mcp.remote_worker.http_transfer as worker_http_transfer
+import local_shell_mcp.tools.registry.transfer as transfer_registry
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.transfer import (
@@ -287,6 +289,77 @@ async def test_mcp_does_not_expose_remote_transfer_tools(tmp_path, monkeypatch):
         "remote_pull_dir",
         "remote_push_dir",
     }.isdisjoint(tools)
+
+
+@pytest.mark.asyncio
+async def test_registered_transfer_handlers_reach_local_worker_clients(
+    tmp_path, monkeypatch
+):
+    _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("abort.bin", expected_bytes=1)
+    aborted = await transfer_registry.transfer_abort_write.func(
+        "abort.bin", begin.transfer_id
+    )
+    assert aborted.deleted is True
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_upload_file(**kwargs):
+        calls.append(("upload", kwargs))
+        return {"ok": True, "direction": "upload"}
+
+    def fake_download_file(**kwargs):
+        calls.append(("download", kwargs))
+        return {"ok": True, "direction": "download"}
+
+    def fake_abort_download(**kwargs):
+        calls.append(("abort", kwargs))
+        return {"ok": True, "direction": "abort"}
+
+    monkeypatch.setattr(worker_http_transfer, "upload_file", fake_upload_file)
+    monkeypatch.setattr(
+        worker_http_transfer, "download_file", fake_download_file
+    )
+    monkeypatch.setattr(
+        worker_http_transfer, "abort_download", fake_abort_download
+    )
+
+    common = {
+        "path": "payload.bin",
+        "session_id": "SESSION1",
+        "url": "https://worker.example/transfer",
+        "controller_url": "https://controller.example",
+        "authorization": "Bearer token",
+        "worker": "worker-a",
+        "expected_bytes": 7,
+        "expected_sha256": "a" * 64,
+        "chunk_size": 1024,
+        "timeout_s": 5.0,
+    }
+    assert await transfer_registry.transfer_http_upload.func(**common) == {
+        "ok": True,
+        "direction": "upload",
+    }
+    assert await transfer_registry.transfer_http_download.func(
+        **common,
+        transfer_id="transfer-1",
+        overwrite=False,
+    ) == {"ok": True, "direction": "download"}
+    assert await transfer_registry.transfer_http_abort_download.func(
+        path="payload.bin",
+        session_id="SESSION1",
+        transfer_id="transfer-1",
+    ) == {"ok": True, "direction": "abort"}
+
+    assert [kind for kind, _ in calls] == ["upload", "download", "abort"]
+    assert calls[0][1]["expected_sha256"] == "a" * 64
+    assert calls[1][1]["transfer_id"] == "transfer-1"
+    assert calls[1][1]["overwrite"] is False
+    assert calls[2][1] == {
+        "path": "payload.bin",
+        "session_id": "SESSION1",
+        "transfer_id": "transfer-1",
+    }
 
 
 def _write_payload(

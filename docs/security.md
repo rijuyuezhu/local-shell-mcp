@@ -4,10 +4,9 @@
 
 ## Recommended deployment
 
-- Run inside a disposable container or VM.
+- Run under a dedicated OS account or inside a disposable VM when stronger isolation is needed.
 - Expose public deployments through HTTPS with `LOCAL_SHELL_MCP_AUTH_MODE=oauth`.
-- Do not mount the Docker socket.
-- Do not mount host root.
+- Do not expose container-runtime control sockets or unrestricted host roots to the service account.
 - Do not mount unrestricted SSH keys or all of `~/.ssh`.
 - Use single-repository deploy keys or short-lived GitHub App installation tokens.
 - Leave `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` by default.
@@ -94,8 +93,6 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 ## Full-control mode
 
 `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists, but MCP safety annotations remain conservative and continue to identify destructive or open-world tools.
-
-In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
 ## Bounded command containment
 
@@ -226,10 +223,10 @@ uses an owner-private versioned directory, a cross-process lock, digest checks,
 atomic replacement, and executable-permission validation; a caller-supplied
 `ui_tui_command` remains an explicit administrator-controlled override.
 
-Frozen release archives carry the same compiled UI as a sidecar and Linux
-archives additionally carry a pinned static tmux helper. Release checksums,
-third-party notices, source/toolchain pins, supported platforms, and rebuild
-commands are authoritative in [Native artifact provenance](maintenance/native-artifact-provenance.md).
+Frozen release archives carry the same compiled UI as a sidecar. Release
+checksums, third-party notices, source/toolchain pins, supported platforms, and
+rebuild commands are authoritative in
+[Native artifact provenance](maintenance/native-artifact-provenance.md).
 Treat every native payload as code executing with the local server account, not
 as passive data; do not replace embedded or extracted binaries outside the
 verified build/update path.
@@ -249,7 +246,7 @@ Treat `/workspace/.local-shell-mcp/audit_log/` as sensitive session state, not a
 - Prompt injection in repository files.
 - Malicious command execution by an over-capable model.
 - Secret exfiltration from mounted files or environment variables.
-- Host takeover via Docker socket or privileged mounts.
+- Host takeover via container-runtime sockets or privileged host mounts.
 - Accidental destructive commands.
 
 ## Reporting

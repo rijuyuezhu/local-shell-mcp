@@ -194,15 +194,6 @@ def _repair_profile_runtime(
     return result
 
 
-def migrated_legacy_profile() -> dict[str, Any] | None:
-    """Return a complete migrated profile without creating new state."""
-    profile_id = _read_migration_marker()
-    if profile_id is None:
-        return None
-    profile = read_worker_profile(profile_id)
-    return _migration_result(profile_id, profile)
-
-
 def migrate_legacy_worker_state() -> dict[str, Any] | None:
     """Create one profile from legacy state while retaining the legacy files."""
     with private_file_lock(worker_migration_lock_path()):

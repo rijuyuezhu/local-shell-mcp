@@ -15,8 +15,8 @@ from typing import Any
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.executors.mcp.instructions import SERVER_INSTRUCTIONS
+from local_shell_mcp.tools.catalog import build_tool_catalog
 from local_shell_mcp.tools.declarative import DeclarativeToolRegistry
-from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.utils.serialization import to_jsonable
 
 
@@ -61,7 +61,7 @@ def _display_name(name: str) -> str:
 def _registry_group_map() -> dict[str, str]:
     """Return tool-name to registry-name mapping from declarative registries."""
     mapping: dict[str, str] = {}
-    for registry in discover_tool_registries():
+    for registry in build_tool_catalog().registries:
         if isinstance(registry, DeclarativeToolRegistry):
             for tool in registry.tools:
                 mapping[tool.name] = registry.name
@@ -71,7 +71,7 @@ def _registry_group_map() -> dict[str, str]:
 def _registry_docs() -> dict[str, str]:
     """Return registry-name to normalized registry docstring mapping."""
     docs: dict[str, str] = {}
-    for registry in discover_tool_registries():
+    for registry in build_tool_catalog().registries:
         doc = inspect.getdoc(registry.__class__) or ""
         docs[registry.name] = " ".join(inspect.cleandoc(doc).split())
     return docs
@@ -146,7 +146,9 @@ def _tool_sections(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
             tool
         )
 
-    registry_order = [registry.name for registry in discover_tool_registries()]
+    registry_order = [
+        registry.name for registry in build_tool_catalog().registries
+    ]
     ordered_groups = [*registry_order, "other"]
     sections = [
         {

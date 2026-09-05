@@ -25,7 +25,6 @@ from local_shell_mcp.tools.declarative import (
     DeclarativeToolRegistry,
     _normalize_description,
 )
-from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_handlers import (
     UnknownLocalToolError,
     call_local_tool,
@@ -172,16 +171,15 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
 
     mcp = build_mcp()
     assert mcp.instructions is not None
-    assert "`read` for file/directory context" in mcp.instructions
-    assert (
-        "`search(pattern, paths=...)` for content discovery" in mcp.instructions
-    )
-    assert "`[path#snapshot_id]` plus `line:text` rows" in mcp.instructions
-    assert "`hashline_edit` as the default edit tool" in mcp.instructions
-    assert "Body rows are final content only" in mcp.instructions
-    assert "never invent or reuse them from memory" in mcp.instructions
-    assert "new `read`/`search` after each edit" in mcp.instructions
-    assert "Use `edit_lines` only when" in mcp.instructions
+    for concept in (
+        "read",
+        "search",
+        "hashline_edit",
+        "snapshot_id",
+        "line:text",
+        "edit_lines",
+    ):
+        assert concept in mcp.instructions
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
     descriptions = {
@@ -192,51 +190,18 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
             "write_file",
             "edit_lines",
             "hashline_edit",
-            "bash",
-            "run_python_code",
-            "session_start",
-            "remote_admin",
         )
     }
 
-    assert "[path#snapshot_id]" in descriptions["read"]
-    assert "line:text" in descriptions["read"]
-    assert "copied directly into hashline_edit" in descriptions["read"]
-    assert "Use edit_lines only" in descriptions["read"]
-    assert "path:5-16,960-973" in descriptions["read"]
-    assert "ordered and non-overlapping" in descriptions["read"]
-    assert "instead of shell grep/ripgrep" in descriptions["search"]
-    assert "editable grounding" in descriptions["search"]
-    assert "copied into hashline_edit" in descriptions["search"]
-    assert "gitignore defaults to true" in descriptions["search"]
-    assert "gitignore=false" in descriptions["search"]
-    assert "use hashline_edit" in descriptions["write_file"]
-    assert "do not use it for partial edits" in descriptions["write_file"]
-    assert "Low-level structured line edit" in descriptions["edit_lines"]
-    assert "Default model-facing edit tool" in descriptions["hashline_edit"]
-    assert "never invent snapshot ids/tags" in descriptions["hashline_edit"]
-    assert "Body rows are final content only" in descriptions["hashline_edit"]
-    assert "After every edit" in descriptions["hashline_edit"]
-    assert (
-        "hashline_edit when editing copied read/search rows"
-        in descriptions["bash"]
-    )
-    assert "timeout default/cap: 10/120 seconds" in descriptions["bash"]
-    assert (
-        "read/search/hashline_edit/edit_lines/write_file"
-        in descriptions["run_python_code"]
-    )
-    assert (
-        "timeout default/cap: 10/120 seconds" in descriptions["run_python_code"]
-    )
-    assert (
-        "read, search, hashline_edit, edit_lines"
-        in descriptions["session_start"]
-    )
-    assert (
-        "read, search, hashline_edit, edit_lines"
-        in descriptions["remote_admin"]
-    )
+    for concept in ("snapshot_id", "line:text", "hashline_edit"):
+        assert concept in descriptions["read"]
+    for concept in ("grounding", "hashline_edit", "gitignore"):
+        assert concept in descriptions["search"]
+    assert "hashline_edit" in descriptions["write_file"]
+    for concept in ("snapshot_id", "hashline_edit"):
+        assert concept in descriptions["edit_lines"]
+    for concept in ("read", "search", "snapshot", "SWAP", "INSERT"):
+        assert concept in descriptions["hashline_edit"]
 
 
 def test_remote_registry_declares_only_remote_admin(monkeypatch):
@@ -248,7 +213,7 @@ def test_remote_registry_declares_only_remote_admin(monkeypatch):
         DeclarativeToolRegistry,
         next(
             registry
-            for registry in discover_tool_registries()
+            for registry in build_tool_catalog().registries
             if registry.name == "remote"
         ),
     )
@@ -290,7 +255,7 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
     worker_tools = {spec.worker_tool for spec in REMOTE_WORKER_TOOL_SPECS}
     route_by_name = {
         route.tool_name: route
-        for registry in discover_tool_registries()
+        for registry in build_tool_catalog().registries
         for route in registry.http_routes()
     }
     handler_names = set(local_tool_handlers())

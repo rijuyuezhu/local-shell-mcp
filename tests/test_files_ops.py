@@ -6,23 +6,21 @@ from pathlib import Path
 
 import pytest
 
+import local_shell_mcp.ops.files as files_ops
+import local_shell_mcp.tools.registry.files as files_registry
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.files import (
     delete_file_or_dir_execute,
-    edit_file_execute,
-    edit_lines_execute,
-    hashline_edit_execute,
     list_files_execute,
-    multi_edit_file_execute,
     parse_hashline_edit_input,
     read_file_execute,
-    read_many_files_execute,
     write_file_execute,
 )
 from local_shell_mcp.ops.shell import check_command_policy
 from local_shell_mcp.ops.utils.path import resolve_path
-from local_shell_mcp.schemas.input_models.files import ReadFileRequest
+from local_shell_mcp.tool_session.bindings import LocalSessionBinding
+from local_shell_mcp.tool_session.resolver import SessionResolver
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import nested_mcp_text
 
@@ -33,13 +31,97 @@ def _create_session() -> str:
     return store.create_session(workdir=".").session_id
 
 
-def test_write_read_edit(tmp_path, monkeypatch):
+def _local_binding(session_id: str | None) -> LocalSessionBinding | None:
+    if session_id is None:
+        return None
+    binding = SessionResolver(get_tool_session_store()).resolve_active_binding(
+        session_id
+    )
+    assert isinstance(binding, LocalSessionBinding)
+    return binding
+
+
+def _edit_lines(
+    path: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+):
+    store = get_tool_session_store()
+    return files_ops._edit_lines_local(
+        files_ops.files_config_from_settings(get_settings()),
+        store,
+        _local_binding(session_id),
+        path,
+        start_line,
+        end_line,
+        replacement,
+        snapshot_id,
+    )
+
+
+def _hashline_edit(input_text: str, session_id: str | None = None):
+    store = get_tool_session_store()
+    return files_ops._hashline_edit_local(
+        files_ops.files_config_from_settings(get_settings()),
+        store,
+        _local_binding(session_id),
+        input_text,
+    )
+
+
+def test_write_and_read_round_trip(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     write_file_execute("a.txt", "hello world")
     assert read_file_execute("a.txt").content == "hello world"
-    edit_file_execute("a.txt", "world", "mcp")
-    assert read_file_execute("a.txt").content == "hello mcp"
+
+
+@pytest.mark.asyncio
+async def test_registered_file_handlers_round_trip_grounded_edits(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    session_id = _create_session()
+
+    written = await files_registry.write_file.func(
+        session_id, "adapter.txt", "one\ntwo\n"
+    )
+    assert written.created is True
+
+    first = read_file_execute(
+        "adapter.txt", start_line=1, end_line=2, session_id=session_id
+    )
+    assert first.snapshot_id is not None
+    await files_registry.edit_lines.func(
+        "adapter.txt",
+        2,
+        2,
+        "TWO",
+        session_id,
+        first.snapshot_id,
+    )
+
+    second = read_file_execute(
+        "adapter.txt", start_line=1, end_line=2, session_id=session_id
+    )
+    assert second.snapshot_id is not None
+    await files_registry.hashline_edit.func(
+        session_id,
+        f"[adapter.txt#{second.snapshot_id}]\n1:one\n+ONE",
+    )
+    assert (tmp_path / "adapter.txt").read_text(encoding="utf-8") == (
+        "ONE\nTWO\n"
+    )
+
+    deleted = await files_registry.delete_file_or_dir.func(
+        session_id, "adapter.txt"
+    )
+    assert deleted.deleted == "file"
+    assert not (tmp_path / "adapter.txt").exists()
 
 
 def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
@@ -227,7 +309,7 @@ def test_concurrent_snapshot_edits_reject_stale_writer(tmp_path, monkeypatch):
     def edit(replacement: str) -> str:
         barrier.wait(timeout=5)
         try:
-            edit_lines_execute(
+            _edit_lines(
                 "shared.txt",
                 2,
                 2,
@@ -250,30 +332,6 @@ def test_concurrent_snapshot_edits_reject_stale_writer(tmp_path, monkeypatch):
     }
 
 
-def test_edit_refuses_files_above_write_limit(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES", "5")
-    clear_settings_cache()
-    (tmp_path / "large.txt").write_text("hello world", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="Refusing to edit"):
-        edit_file_execute("large.txt", "world", "mcp")
-
-
-def test_edits_reject_invalid_utf8_files(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    clear_settings_cache()
-    original = b"abc\xffworld"
-    (tmp_path / "blob.bin").write_bytes(original)
-
-    with pytest.raises(UnicodeDecodeError):
-        edit_file_execute("blob.bin", "world", "mcp")
-    with pytest.raises(UnicodeDecodeError):
-        multi_edit_file_execute("blob.bin", [{"old": "world", "new": "mcp"}])
-
-    assert (tmp_path / "blob.bin").read_bytes() == original
-
-
 @pytest.mark.asyncio
 async def test_fetch_reports_non_utf8_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -287,34 +345,6 @@ async def test_fetch_reports_non_utf8_errors(tmp_path, monkeypatch):
         "Unable to fetch file: UnicodeDecodeError:"
     )
     assert payload["metadata"]["error"] == "UnicodeDecodeError"
-
-
-def test_read_many_files_supports_per_file_line_ranges(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    clear_settings_cache()
-    (tmp_path / "a.txt").write_text("a1\na2\na3\n", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("b1\nb2\nb3\n", encoding="utf-8")
-
-    result = read_many_files_execute(
-        [
-            ("a.txt", 2, 2),
-            ReadFileRequest(path="b.txt", start_line=1, end_line=2),
-        ]
-    )
-
-    assert [item.content for item in result.files] == ["a2", "b1\nb2"]
-    assert result.total_content_bytes == len(b"a2b1\nb2")
-
-
-def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_READ_MANY_FILES", "1")
-    clear_settings_cache()
-    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("b", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="Refusing to read 2 files; max is 1"):
-        read_many_files_execute([("a.txt", None, None), ("b.txt", None, None)])
 
 
 def test_reject_path_escape(tmp_path, monkeypatch):
@@ -427,13 +457,11 @@ def test_read_file_execute_multi_ranges_records_grounding_and_edits(
     assert read_result.snapshot_id is not None
 
     with pytest.raises(ValueError, match="not shown"):
-        edit_lines_execute(
+        _edit_lines(
             "multi.py", 4, 4, "FOUR", read_result.snapshot_id, session_id
         )
 
-    edit_lines_execute(
-        "multi.py", 5, 5, "FIVE", read_result.snapshot_id, session_id
-    )
+    _edit_lines("multi.py", 5, 5, "FIVE", read_result.snapshot_id, session_id)
     assert (tmp_path / "multi.py").read_text(encoding="utf-8") == (
         "one\ntwo\nthree\nfour\nFIVE\n"
     )
@@ -452,7 +480,7 @@ def test_edit_lines_uses_snapshot_and_returns_diff_context(
         "edit.py", start_line=2, end_line=3, session_id=session_id
     )
 
-    result = edit_lines_execute(
+    result = _edit_lines(
         "edit.py",
         2,
         3,
@@ -485,7 +513,7 @@ def test_edit_lines_rejects_stale_snapshot(tmp_path, monkeypatch):
     (tmp_path / "edit.py").write_text("changed\nbeta\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="file changed since snapshot"):
-        edit_lines_execute(
+        _edit_lines(
             "edit.py",
             1,
             1,
@@ -505,7 +533,7 @@ def test_edit_lines_rejects_unseen_snapshot_range(tmp_path, monkeypatch):
     )
 
     with pytest.raises(ValueError, match="edit range was not shown"):
-        edit_lines_execute(
+        _edit_lines(
             "edit.py",
             2,
             2,
@@ -524,7 +552,7 @@ def test_hashline_edit_replaces_copied_line_rows(tmp_path, monkeypatch):
         "edit.py", start_line=2, end_line=2, session_id=session_id
     )
 
-    result = hashline_edit_execute(
+    result = _hashline_edit(
         f"[edit.py#{read_result.snapshot_id}]\n2:beta\n+BETA",
         session_id=session_id,
     )
@@ -547,7 +575,7 @@ def test_hashline_edit_deletes_when_no_replacement_lines(tmp_path, monkeypatch):
         "edit.py", start_line=2, end_line=2, session_id=session_id
     )
 
-    hashline_edit_execute(
+    _hashline_edit(
         f"[edit.py#{read_result.snapshot_id}]\n2:beta",
         session_id=session_id,
     )
@@ -566,7 +594,7 @@ def test_hashline_edit_supports_swap_directive(tmp_path, monkeypatch):
         "edit.py", start_line=2, end_line=3, session_id=session_id
     )
 
-    hashline_edit_execute(
+    _hashline_edit(
         f"[edit.py#{read_result.snapshot_id}]\nSWAP 2-3:\n+BETA\n+GAMMA",
         session_id=session_id,
     )
@@ -585,7 +613,7 @@ def test_hashline_edit_supports_insert_directive(tmp_path, monkeypatch):
         "edit.py", start_line=2, end_line=2, session_id=session_id
     )
 
-    hashline_edit_execute(
+    _hashline_edit(
         f"[edit.py#{read_result.snapshot_id}]\nINSERT BEFORE 2:\n+inserted",
         session_id=session_id,
     )
@@ -620,7 +648,7 @@ def test_hashline_edit_accepts_workspace_relative_header_from_nested_session(
         + chr(10)
         + "+BETA"
     )
-    hashline_edit_execute(payload, session_id=session_id)
+    _hashline_edit(payload, session_id=session_id)
 
     assert (project / "edit.py").read_text(encoding="utf-8") == (
         "alpha\nBETA\n"
@@ -637,7 +665,7 @@ def test_hashline_edit_rejects_mismatched_old_text(tmp_path, monkeypatch):
     )
 
     with pytest.raises(ValueError, match="old text does not match"):
-        hashline_edit_execute(
+        _hashline_edit(
             f"[edit.py#{read_result.snapshot_id}]\n2:not beta\n+BETA",
             session_id=session_id,
         )
@@ -659,7 +687,7 @@ def test_hashline_edit_supports_multiple_hunks_same_file(tmp_path, monkeypatch):
         "edit.py", start_line=1, end_line=4, session_id=session_id
     )
 
-    result = hashline_edit_execute(
+    result = _hashline_edit(
         f"[edit.py#{read_result.snapshot_id}]\n"
         "2:beta\n"
         "+BETA\n"
@@ -691,7 +719,7 @@ def test_hashline_edit_supports_multiple_hunks_with_insert(
         "edit.py", start_line=1, end_line=3, session_id=session_id
     )
 
-    result = hashline_edit_execute(
+    result = _hashline_edit(
         f"[edit.py#{read_result.snapshot_id}]\n"
         "INSERT AFTER 1:\n"
         "+inserted\n"
@@ -722,7 +750,7 @@ def test_hashline_edit_supports_multiple_files(tmp_path, monkeypatch):
         "two.py", start_line=1, end_line=1, session_id=session_id
     )
 
-    result = hashline_edit_execute(
+    result = _hashline_edit(
         f"[one.py#{one.snapshot_id}]\n"
         "2:beta\n"
         "+BETA\n"
@@ -748,7 +776,7 @@ def test_hashline_edit_rejects_overlapping_hunks(tmp_path, monkeypatch):
     )
 
     with pytest.raises(ValueError, match="overlap"):
-        hashline_edit_execute(
+        _hashline_edit(
             f"[edit.py#{read_result.snapshot_id}]\n"
             "1:alpha\n"
             "2:beta\n"

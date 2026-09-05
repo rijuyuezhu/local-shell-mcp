@@ -118,7 +118,8 @@ def test_tool_collection_is_cached_and_probes_concurrently(
     monkeypatch, tmp_path
 ):
     settings = _settings(tmp_path)
-    env_ops.clear_session_environment_cache()
+    with env_ops._CACHE_LOCK:
+        env_ops._TOOL_CACHE.clear()
     probes = tuple(
         env_ops._CommandProbe(name, (name,), "system")
         for name in (

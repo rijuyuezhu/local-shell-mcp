@@ -180,27 +180,31 @@ def test_registration_prefers_approved_then_oldest_matching_client(
 
 
 def test_registration_reuses_approved_client_after_memory_reload(
-    oauth_client, monkeypatch
+    oauth_client, monkeypatch, tmp_path
 ):
     first = oauth_client.post("/oauth/register", json=_registration_body())
     client_id = first.json()["client_id"]
     oauth_service._approve_client(client_id, now=int(time.time()) + 1)
 
-    oauth_state().clients.clear()
-    assert oauth_service.initialize_dynamic_clients() == 1
-    reloaded_client = TestClient(
-        _add_public_routes_to_mcp_http_app(Starlette())[0]
-    )
-    repeated = reloaded_client.post(
-        "/oauth/register",
-        json=_registration_body(redirect_uris=[REDIRECT_B, REDIRECT_A]),
-    )
+    reloaded_state = build_oauth_state(tmp_path / ".state")
+    assert reloaded_state.start() == 1
+    previous = configure_oauth_state(reloaded_state)
+    try:
+        reloaded_client = TestClient(
+            _add_public_routes_to_mcp_http_app(Starlette())[0]
+        )
+        repeated = reloaded_client.post(
+            "/oauth/register",
+            json=_registration_body(redirect_uris=[REDIRECT_B, REDIRECT_A]),
+        )
 
-    assert repeated.status_code == 200
-    assert repeated.json()["reused"] is True
-    assert repeated.json()["client_id"] == client_id
-    assert oauth_state().clients[client_id].approved_at is not None
-    assert len(oauth_state().clients) == 1
+        assert repeated.status_code == 200
+        assert repeated.json()["reused"] is True
+        assert repeated.json()["client_id"] == client_id
+        assert oauth_state().clients[client_id].approved_at is not None
+        assert len(oauth_state().clients) == 1
+    finally:
+        configure_oauth_state(previous)
 
 
 def test_concurrent_matching_registrations_create_exactly_one_client(

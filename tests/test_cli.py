@@ -1,7 +1,6 @@
 import argparse
 import json
 import textwrap
-from pathlib import Path
 
 import pytest
 from mcp.shared.auth import OAuthToken
@@ -28,17 +27,6 @@ def _command_parser(name: str) -> argparse.ArgumentParser:
         if isinstance(action, argparse._SubParsersAction)
     )
     return subparsers.choices[name]
-
-
-def test_vscode_extension_uses_explicit_server_subcommand():
-    source = (
-        Path(__file__).parents[1] / "vscode-extension" / "src" / "extension.ts"
-    ).read_text(encoding="utf-8")
-
-    assert (
-        "cp.spawn(config.executablePath, ['server', '--mode', 'mcp']" in source
-    )
-    assert "cp.spawn(config.executablePath, ['--mode', 'mcp']" not in source
 
 
 class NoBreakHelpFormatter(argparse.HelpFormatter):
@@ -238,19 +226,6 @@ def test_worker_subcommand_parse_to_worker_handler():
     assert args.name == "npu-4card"
     assert args.workdir == "/home/user/project"
     assert not hasattr(args, "persist")
-
-
-def test_legacy_flat_worker_parser_is_rejected():
-    with pytest.raises(SystemExit):
-        cli._build_parser().parse_args(
-            [
-                "worker",
-                "--server",
-                "https://example.com",
-                "--invite",
-                "lsmcp_inv_xxxxx",
-            ]
-        )
 
 
 def test_tui_subcommand_parses_loopback_api_base():

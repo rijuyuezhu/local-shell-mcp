@@ -178,37 +178,6 @@ def _register_snapshot(
     )
 
 
-def create_file_link_execute(
-    path: str,
-    ttl_s: int | None = None,
-    filename: str | None = None,
-    max_downloads: int | None = None,
-    session_id: str | None = None,
-    inline: bool = False,
-) -> CreateFileLinkOutput:
-    """Create a local-session link bound to a creation-time snapshot."""
-    if not get_settings().file_download_enabled:
-        raise PermissionError("file downloads are disabled")
-    session = (
-        get_tool_session_store().touch_session(session_id)
-        if session_id is not None
-        else None
-    )
-    if session is not None and session.target != "local":
-        raise ValueError(
-            "file download links can only be created synchronously for local sessions; "
-            "use the async dispatcher for remote sessions"
-        )
-    return _register_snapshot(
-        create_local_snapshot(path, session),
-        ttl_s=ttl_s,
-        filename=filename,
-        max_downloads=max_downloads,
-        inline=inline,
-        session_id=session_id,
-    )
-
-
 async def create_file_link_dispatch_execute(
     path: str,
     ttl_s: int | None = None,

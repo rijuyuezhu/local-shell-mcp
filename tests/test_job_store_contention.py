@@ -9,6 +9,7 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import managed as jobs_managed
+from local_shell_mcp.jobs import persistence as job_persistence
 from local_shell_mcp.jobs import recovery as jobs_recovery
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -33,10 +34,10 @@ def _seed_managed_job(
     job_id: str = "job_contended",
 ) -> tuple[str, Path]:
     session_id = _configure(tmp_path, monkeypatch)
-    log_path = jobs_ops._attempt_paths(job_id, 1)["log"]
+    log_path = job_persistence.attempt_paths(job_id, 1)["log"]
     log_path.write_text("", encoding="utf-8")
     now = time.time()
-    jobs_ops._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_ops.JOB_STORE_VERSION,
             "jobs": [
@@ -72,7 +73,7 @@ def _seed_managed_job(
 
 
 def _stored_job(session_id: str, job_id: str) -> dict[str, object]:
-    store = jobs_ops._load_store()
+    store = job_persistence.load_store()
     return jobs_ops._find_session_job(store, session_id, job_id)
 
 
@@ -426,7 +427,7 @@ def test_missing_managed_log_row_does_not_create_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session_id = _configure(tmp_path, monkeypatch)
-    log_path = jobs_ops._attempt_paths("job_missing", 1)["log"]
+    log_path = job_persistence.attempt_paths("job_missing", 1)["log"]
 
     jobs_managed._append_managed_log(
         session_id, "job_missing", str(log_path), "orphaned"
@@ -480,7 +481,7 @@ async def test_managed_stop_reconciles_deferred_cancellation_updates(
 
     assert stopped.job.status == "stopped"
     assert stopped.job.error is None
-    assert "job cancelled" in jobs_ops._attempt_paths(started.job_id, 1)[
+    assert "job cancelled" in job_persistence.attempt_paths(started.job_id, 1)[
         "log"
     ].read_text(encoding="utf-8")
     assert not list(
