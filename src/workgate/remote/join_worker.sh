@@ -106,13 +106,6 @@ normalize_tmp_candidate() {
   if is_windows_shell "$platform"; then
     case "$value" in
       [A-Za-z]:[\\/]*|/*) windows_absolute_env_or_empty "$value" ;;
-      \\*)
-        if have cygpath; then
-          cygpath -m "$value" 2>/dev/null || printf '%s\n' ""
-        else
-          printf '%s/%s\n' "${SYSTEMDRIVE:-C:}" "${value#\\}" | tr '\\' '/'
-        fi
-        ;;
       *) printf '%s\n' "$PWD/$value" ;;
     esac
   else
@@ -137,7 +130,7 @@ system_tmpdir_is_suitable() {
 }
 
 normalize_system_tmpdir() {
-  local platform raw candidate user_home system_root
+  local platform raw candidate user_home system_root current_drive native_pwd
   local -a candidates
   platform="$(uname -s 2>/dev/null || true)"
   if is_windows_shell "$platform"; then
@@ -150,11 +143,17 @@ normalize_system_tmpdir() {
       user_home=""
     fi
     system_root="${SYSTEMROOT:-${SystemRoot:-%SYSTEMROOT%}}"
+    current_drive="${SYSTEMDRIVE:-C:}"
+    if native_pwd="$(pwd -W 2>/dev/null)"; then
+      case "$native_pwd" in
+        [A-Za-z]:[\\/]*) current_drive="${native_pwd:0:2}" ;;
+      esac
+    fi
     candidates=(
       "$SYSTEM_TMPDIR" "${TEMP:-}" "${TMP:-}"
       "${user_home:+$user_home/AppData/Local/Temp}"
       "$system_root/Temp"
-      "C:/temp" "C:/tmp" "\\temp" "\\tmp" "$PWD"
+      "C:/temp" "C:/tmp" "$current_drive/temp" "$current_drive/tmp" "$PWD"
     )
   else
     candidates=(

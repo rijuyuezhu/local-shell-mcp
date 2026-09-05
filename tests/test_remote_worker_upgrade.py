@@ -1548,7 +1548,8 @@ printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
     env["TEMP"] = "C:/Temp"
 
     completed = subprocess.run(
-        [bash, "-c", probe],
+        [bash, "-s"],
+        input=probe,
         env=env,
         capture_output=True,
         text=True,
@@ -1618,7 +1619,8 @@ printf '%s\\n' "$SYSTEM_TMPDIR"
         }
     )
     completed = subprocess.run(
-        [bash, "-c", probe],
+        [bash, "-s"],
+        input=probe,
         env=env,
         capture_output=True,
         text=True,
@@ -1679,7 +1681,8 @@ rm -rf "$TMPDIR"
     env.pop("TMP", None)
 
     shell = subprocess.run(
-        [str(git_bash), "-c", probe],
+        [str(git_bash), "-s"],
+        input=probe,
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -1727,7 +1730,8 @@ def test_join_script_normalizes_relative_system_tmpdir(tmp_path: Path) -> None:
     )
 
     completed = subprocess.run(
-        ["bash", "-c", probe],
+        ["bash", "-s"],
+        input=probe,
         cwd=tmp_path,
         env={**os.environ, "TMPDIR": "relative-tmp"},
         capture_output=True,
@@ -1787,7 +1791,8 @@ printf '%s\\n' "$SYSTEM_TMPDIR"
     env.pop("TMP", None)
 
     completed = subprocess.run(
-        ["bash", "-c", probe],
+        ["bash", "-s"],
+        input=probe,
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -1840,7 +1845,8 @@ rm -rf "$TMPDIR"
     )
 
     shell = subprocess.run(
-        ["bash", "-c", probe],
+        ["bash", "-s"],
+        input=probe,
         cwd=tmp_path,
         env=env,
         capture_output=True,
