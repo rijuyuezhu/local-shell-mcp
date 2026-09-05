@@ -1514,7 +1514,9 @@ def test_join_script_uses_native_windows_worker_namespaces(
         prefix
         + """\
 uname() { printf 'MINGW64_NT-10.0\\n'; }
+system_tmpdir_is_suitable() { [ "$1" = 'C:/Temp' ]; }
 configure_app_dirs
+normalize_system_tmpdir
 printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
 """
     )
@@ -1562,6 +1564,146 @@ printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
     ]
 
 
+def test_join_script_windows_temp_candidates_follow_cpython_order(
+    tmp_path: Path,
+) -> None:
+    from importlib import resources
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+    attempts = tmp_path / "attempts.txt"
+    probe = (
+        prefix
+        + """\
+uname() { printf 'MINGW64_NT-10.0\\n'; }
+system_tmpdir_is_suitable() {
+  printf '%s\\n' "$1" >> "$ATTEMPTS"
+  [ "$1" = 'C:/Users/Test/AppData/Local/Temp' ]
+}
+normalize_system_tmpdir
+printf '%s\\n' "$SYSTEM_TMPDIR"
+"""
+    )
+
+    if os.name == "nt":
+        bash = None
+        git = shutil.which("git")
+        if git:
+            git_bash = Path(git).resolve().parent.parent / "bin" / "bash.exe"
+            if git_bash.is_file():
+                bash = str(git_bash)
+    else:
+        bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("requires bash to exercise the bootstrap path policy")
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "TMPDIR": "C:/env-tmpdir",
+            "TEMP": "C:/env-temp",
+            "TMP": "C:/env-tmp",
+            "USERPROFILE": "C:/Users/Test",
+            "SYSTEMROOT": "C:/Windows",
+            "ATTEMPTS": str(attempts),
+        }
+    )
+    completed = subprocess.run(
+        [bash, "-c", probe],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "C:/Users/Test/AppData/Local/Temp"
+    assert attempts.read_text(encoding="utf-8").splitlines() == [
+        "C:/env-tmpdir",
+        "C:/env-temp",
+        "C:/env-tmp",
+        "C:/Users/Test/AppData/Local/Temp",
+    ]
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="compares Git Bash bootstrap fallback with native Windows CPython",
+)
+def test_join_script_windows_temp_fallback_matches_cpython(
+    tmp_path: Path,
+) -> None:
+    from importlib import resources
+
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("requires Git Bash to exercise Windows bootstrap fallback")
+    git_bash = Path(git).resolve().parent.parent / "bin" / "bash.exe"
+    if not git_bash.is_file():
+        pytest.skip("requires Git Bash to exercise Windows bootstrap fallback")
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+    probe = (
+        prefix
+        + """\
+normalize_system_tmpdir
+create_bootstrap_tmpdir
+printf '%s\\n%s\\n' "$SYSTEM_TMPDIR" "$TMPDIR"
+rm -rf "$TMPDIR"
+"""
+    )
+    invalid = tmp_path / "does-not-exist"
+    env = os.environ.copy()
+    env["TMPDIR"] = str(invalid)
+    env.pop("TEMP", None)
+    env.pop("TMP", None)
+
+    shell = subprocess.run(
+        [str(git_bash), "-c", probe],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    python = subprocess.run(
+        [sys.executable, "-c", "import tempfile; print(tempfile.gettempdir())"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=20,
+    )
+
+    assert shell.returncode == 0, shell.stderr
+    system_tmp, bootstrap_tmp = shell.stdout.splitlines()
+    expected_tmp = Path(python.stdout.strip()).resolve()
+    assert Path(system_tmp).resolve() == expected_tmp
+    assert Path(bootstrap_tmp).parent.resolve() == expected_tmp
+
+
 @pytest.mark.skipif(os.name == "nt", reason="exercises POSIX TMPDIR semantics")
 def test_join_script_normalizes_relative_system_tmpdir(tmp_path: Path) -> None:
     from importlib import resources
@@ -1596,6 +1738,66 @@ def test_join_script_normalizes_relative_system_tmpdir(tmp_path: Path) -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert Path(completed.stdout.strip()) == relative_tmp.resolve()
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="exercises POSIX temp probe semantics"
+)
+def test_join_script_temp_suitability_requires_a_real_create_probe(
+    tmp_path: Path,
+) -> None:
+    from importlib import resources
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+    rejected = tmp_path / "rejected"
+    accepted = tmp_path / "accepted"
+    rejected.mkdir()
+    accepted.mkdir()
+    probe = (
+        prefix
+        + """\
+mktemp() {
+  case "$1" in
+    "$REJECTED"/*) return 1 ;;
+    *) command mktemp "$@" ;;
+  esac
+}
+normalize_system_tmpdir
+printf '%s\\n' "$SYSTEM_TMPDIR"
+"""
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "TMPDIR": str(rejected),
+            "TEMP": str(accepted),
+            "REJECTED": str(rejected),
+        }
+    )
+    env.pop("TMP", None)
+
+    completed = subprocess.run(
+        ["bash", "-c", probe],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert Path(completed.stdout.strip()).resolve() == accepted.resolve()
 
 
 @pytest.mark.skipif(

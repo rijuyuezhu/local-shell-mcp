@@ -66,7 +66,7 @@ windows_absolute_env_or_empty() {
 }
 
 configure_app_dirs() {
-  local platform xdg_state xdg_data local_appdata user_profile windows_tmp
+  local platform xdg_state xdg_data local_appdata user_profile
   local default_state default_data
   platform="$(uname -s 2>/dev/null || true)"
 
@@ -82,12 +82,6 @@ configure_app_dirs() {
     fi
     default_state="$local_appdata/workgate/state/worker"
     default_data="$local_appdata/workgate/data/worker"
-    if [ -z "$SYSTEM_TMPDIR" ]; then
-      windows_tmp="$(windows_absolute_env_or_empty "${TEMP:-${TMP:-}}")"
-      if [ -n "$windows_tmp" ]; then
-        SYSTEM_TMPDIR="$windows_tmp"
-      fi
-    fi
   else
     xdg_state="$(absolute_env_or_empty "${XDG_STATE_HOME:-}")"
     xdg_data="$(absolute_env_or_empty "${XDG_DATA_HOME:-}")"
@@ -112,6 +106,13 @@ normalize_tmp_candidate() {
   if is_windows_shell "$platform"; then
     case "$value" in
       [A-Za-z]:[\\/]*|/*) windows_absolute_env_or_empty "$value" ;;
+      \\*)
+        if have cygpath; then
+          cygpath -m "$value" 2>/dev/null || printf '%s\n' ""
+        else
+          printf '%s/%s\n' "${SYSTEMDRIVE:-C:}" "${value#\\}" | tr '\\' '/'
+        fi
+        ;;
       *) printf '%s\n' "$PWD/$value" ;;
     esac
   else
@@ -123,18 +124,37 @@ normalize_tmp_candidate() {
 }
 
 system_tmpdir_is_suitable() {
-  [ -n "${1:-}" ] && [ -d "$1" ] && [ -w "$1" ] && [ -x "$1" ]
+  local candidate="${1:-}" probe
+  [ -n "$candidate" ] || return 1
+  # Match tempfile._get_default_tempdir(): accept only after an actual
+  # create/write/remove probe, rather than trusting permission metadata.
+  probe="$(mktemp "$candidate/.workgate-temp.XXXXXXXX" 2>/dev/null)" || return 1
+  if printf 'blat' > "$probe" 2>/dev/null && rm -f "$probe" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$probe" 2>/dev/null || true
+  return 1
 }
 
 normalize_system_tmpdir() {
-  local platform raw candidate system_drive
+  local platform raw candidate user_home system_root
   local -a candidates
   platform="$(uname -s 2>/dev/null || true)"
   if is_windows_shell "$platform"; then
-    system_drive="${SYSTEMDRIVE:-C:}"
+    # Keep this order aligned with CPython tempfile._candidate_tempdir_list().
+    if [ -n "${USERPROFILE:-}" ]; then
+      user_home="$USERPROFILE"
+    elif [ -n "${HOMEPATH:-}" ]; then
+      user_home="${HOMEDRIVE:-}${HOMEPATH}"
+    else
+      user_home=""
+    fi
+    system_root="${SYSTEMROOT:-${SystemRoot:-%SYSTEMROOT%}}"
     candidates=(
       "$SYSTEM_TMPDIR" "${TEMP:-}" "${TMP:-}"
-      "$system_drive/Temp" "$system_drive/Tmp" "/tmp" "$PWD"
+      "${user_home:+$user_home/AppData/Local/Temp}"
+      "$system_root/Temp"
+      "C:/temp" "C:/tmp" "\\temp" "\\tmp" "$PWD"
     )
   else
     candidates=(
@@ -144,7 +164,7 @@ normalize_system_tmpdir() {
   fi
   for raw in "${candidates[@]}"; do
     candidate="$(normalize_tmp_candidate "$platform" "$raw")"
-    if system_tmpdir_is_suitable "$candidate"; then
+    if [ -n "$candidate" ] && system_tmpdir_is_suitable "$candidate"; then
       SYSTEM_TMPDIR="$candidate"
       return 0
     fi

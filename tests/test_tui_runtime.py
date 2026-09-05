@@ -86,8 +86,8 @@ def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(
     expected = b"#!/bin/sh\necho tui\n"
     with gzip.open(payload, "wb") as handle:
         handle.write(expected)
-    Path(f"{payload}.sha256").write_text(
-        hashlib.sha256(expected).hexdigest() + "\n", encoding="ascii"
+    Path(f"{payload}.sha256").write_bytes(
+        (hashlib.sha256(expected).hexdigest() + "\n").encode("ascii")
     )
 
     first = runtime.materialize_embedded_tui(
@@ -130,8 +130,8 @@ def test_materialize_embedded_tui_replaces_tampered_cache(
     expected = b"#!/bin/sh\necho trusted\n"
     with gzip.open(payload, "wb") as handle:
         handle.write(expected)
-    Path(f"{payload}.sha256").write_text(
-        hashlib.sha256(expected).hexdigest() + "\n", encoding="ascii"
+    Path(f"{payload}.sha256").write_bytes(
+        (hashlib.sha256(expected).hexdigest() + "\n").encode("ascii")
     )
 
     cache = tmp_path / "cache" / "ui-runtime"
