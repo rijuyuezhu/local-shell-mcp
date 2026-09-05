@@ -1,13 +1,13 @@
 [project]
-name = "local-shell-mcp"
+name = "workgate"
 version = "4.3.1"
-description = "A ChatGPT-compatible OAuth MCP server that gives AI coding agents controlled shell, filesystem, and git access inside a local container."
+description = "A self-hosted workspace control plane for coding agents."
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "local-shell-mcp contributors" }]
-keywords = ["mcp", "chatgpt", "shell", "coding-agent"]
+authors = [{ name = "Workgate contributors" }]
+keywords = ["mcp", "workspace", "shell", "coding-agent", "remote-worker"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",
@@ -69,9 +69,9 @@ source-include = [
     "tests/test_coverage_gate.py",
     "tests/test_native_provenance.py",
     "tests/test_tmux_helper.py",
-    "src/local_shell_mcp/helpers/README.md",
-    "src/local_shell_mcp/helpers/opentui.NOTICES",
-    "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
+    "src/workgate/helpers/README.md",
+    "src/workgate/helpers/opentui.NOTICES",
+    "src/workgate/helpers/bun-1.3.14.LICENSE.md",
     "docs/maintenance/native-artifact-provenance.md",
 ]
 source-exclude = [
@@ -83,11 +83,11 @@ source-exclude = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rijuyuezhu/local-shell-mcp"
-Repository = "https://github.com/rijuyuezhu/local-shell-mcp"
+Homepage = "https://github.com/rijuyuezhu/workgate"
+Repository = "https://github.com/rijuyuezhu/workgate"
 
 [project.scripts]
-local-shell-mcp = "local_shell_mcp.main:main"
+workgate = "workgate.main:main"
 
 [tool.ruff]
 line-length = 80
@@ -104,7 +104,7 @@ asyncio_mode = "auto"
 timeout = 120
 timeout_method = "thread"
 markers = [
-    "integration: tests that start real local-shell-mcp server processes",
+    "integration: tests that start real workgate server processes",
     "browser: real Chromium end-to-end tests run by the dedicated browser job",
 ]
 
@@ -114,16 +114,16 @@ parallel = true
 patch = ["subprocess"]
 relative_files = true
 sigterm = true
-source = ["local_shell_mcp"]
+source = ["workgate"]
 
 [tool.coverage.paths]
 source = [
-    "src/local_shell_mcp",
-    "local_shell_mcp",
-    "*/.local-shell-mcp-worker/runtime/local_shell_mcp",
-    "*/.local-shell-mcp-worker/runtimes/*/local_shell_mcp",
-    "*/runtime/local_shell_mcp",
-    "*/runtimes/*/local_shell_mcp",
+    "src/workgate",
+    "workgate",
+    "*/.workgate-worker/runtime/workgate",
+    "*/.workgate-worker/runtimes/*/workgate",
+    "*/runtime/workgate",
+    "*/runtimes/*/workgate",
 ]
 
 [tool.coverage.report]

@@ -158,9 +158,9 @@ jobs:
         shell: bash
         run: |
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            ./ui-opentui/dist/local-shell-mcp-tui.exe --version
+            ./ui-opentui/dist/workgate-tui.exe --version
           else
-            ./ui-opentui/dist/local-shell-mcp-tui --version
+            ./ui-opentui/dist/workgate-tui --version
           fi
 
   platform-wheel:
@@ -225,8 +225,8 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/release/smoke-platform-wheel.py" \
             --state-dir "$state" \
             --work-dir "$work"
-          test ! -e src/local_shell_mcp/ui_runtime
-          test ! -e src/local_shell_mcp/.platform-wheel-build.lock
+          test ! -e src/workgate/ui_runtime
+          test ! -e src/workgate/.platform-wheel-build.lock
 
   windows-conpty:
     name: Windows ConPTY
@@ -264,7 +264,7 @@ jobs:
           uv run python - <<'PY'
           from pathlib import Path
 
-          from local_shell_mcp.release.platform_wheel import inspect_sdist, inspect_wheel
+          from workgate.release.platform_wheel import inspect_sdist, inspect_wheel
 
           wheels = list(Path("dist").glob("*.whl"))
           sdists = list(Path("dist").glob("*.tar.gz"))
@@ -277,10 +277,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
-          mkdir -p /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
-          tar -xzf dist/*.tar.gz -C /tmp/local-shell-mcp-sdist
-          source_dir="$(find /tmp/local-shell-mcp-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          rm -rf /tmp/workgate-sdist /tmp/workgate-sdist-wheel
+          mkdir -p /tmp/workgate-sdist /tmp/workgate-sdist-wheel
+          tar -xzf dist/*.tar.gz -C /tmp/workgate-sdist
+          source_dir="$(find /tmp/workgate-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
           test -f "$source_dir/scripts/release/build-platform-wheel.py"
           test -f "$source_dir/scripts/release/smoke-platform-wheel.py"
           test ! -e "$source_dir/scripts/release/pyinstaller-entry.py"
@@ -298,10 +298,10 @@ jobs:
           test -f "$source_dir/tests/test_coverage_gate.py"
           test -f "$source_dir/tests/test_native_provenance.py"
           test -f "$source_dir/tests/test_tmux_helper.py"
-          test -f "$source_dir/src/local_shell_mcp/helpers/README.md"
-          test -f "$source_dir/src/local_shell_mcp/ui/contracts.py"
-          test -f "$source_dir/src/local_shell_mcp/helpers/opentui.NOTICES"
-          test -f "$source_dir/src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md"
+          test -f "$source_dir/src/workgate/helpers/README.md"
+          test -f "$source_dir/src/workgate/ui/contracts.py"
+          test -f "$source_dir/src/workgate/helpers/opentui.NOTICES"
+          test -f "$source_dir/src/workgate/helpers/bun-1.3.14.LICENSE.md"
           test ! -e "$source_dir/.coverage"
           test ! -e "$source_dir/coverage.json"
           test ! -e "$source_dir/coverage.xml"
@@ -320,27 +320,27 @@ jobs:
           PYTHONPATH="$source_dir/src" python             "$source_dir/scripts/generation/generate-tui-executable-contract.py" --check
           test ! -e "$source_dir/ui-opentui/node_modules"
           test ! -e "$source_dir/ui-opentui/dist"
-          test ! -e "$source_dir/src/local_shell_mcp/ui_runtime"
-          uv build --wheel "$source_dir" --out-dir /tmp/local-shell-mcp-sdist-wheel
-          rebuilt="$(find /tmp/local-shell-mcp-sdist-wheel -maxdepth 1 -name '*.whl' -print -quit)"
+          test ! -e "$source_dir/src/workgate/ui_runtime"
+          uv build --wheel "$source_dir" --out-dir /tmp/workgate-sdist-wheel
+          rebuilt="$(find /tmp/workgate-sdist-wheel -maxdepth 1 -name '*.whl' -print -quit)"
           test -n "$rebuilt"
           REBUILT_WHEEL="$rebuilt" uv run python - <<'PY'
           import os
           from pathlib import Path
 
-          from local_shell_mcp.release.platform_wheel import inspect_wheel
+          from workgate.release.platform_wheel import inspect_wheel
 
           inspect_wheel(Path(os.environ["REBUILT_WHEEL"]), target=None)
           PY
       - name: Install wheel in a clean virtualenv
         run: |
-          python -m venv /tmp/local-shell-mcp-wheel-venv
-          /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install --upgrade pip
-          /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install dist/*.whl
-          /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp --version
-          /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp version
-          /tmp/local-shell-mcp-wheel-venv/bin/python -c \
-            "from local_shell_mcp.ui.runtime import embedded_tui_payload; assert embedded_tui_payload() is None"
+          python -m venv /tmp/workgate-wheel-venv
+          /tmp/workgate-wheel-venv/bin/python -m pip install --upgrade pip
+          /tmp/workgate-wheel-venv/bin/python -m pip install dist/*.whl
+          /tmp/workgate-wheel-venv/bin/workgate --version
+          /tmp/workgate-wheel-venv/bin/workgate version
+          /tmp/workgate-wheel-venv/bin/python -c \
+            "from workgate.ui.runtime import embedded_tui_payload; assert embedded_tui_payload() is None"
 
   release-matrix:
     name: Release matrix check

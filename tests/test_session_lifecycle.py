@@ -9,16 +9,16 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.jobs import persistence as job_persistence
-from local_shell_mcp.tool_session import lifecycle
-from local_shell_mcp.tool_session.store import (
+from workgate.config.settings import clear_settings_cache
+from workgate.jobs import persistence as job_persistence
+from workgate.tool_session import lifecycle
+from workgate.tool_session.store import (
     SESSION_ACTIVE_WINDOW_S,
     ExpiredAgentSessionError,
     UnknownAgentSessionError,
     get_tool_session_store,
 )
-from local_shell_mcp.utils.private_files import private_file_lock
+from workgate.utils.private_files import private_file_lock
 
 
 def _start_cross_process_lifecycle_holder(
@@ -27,7 +27,7 @@ def _start_cross_process_lifecycle_holder(
     script = f"""
 import asyncio
 from pathlib import Path
-from local_shell_mcp.tool_session.lifecycle import session_lifecycle_locks
+from workgate.tool_session.lifecycle import session_lifecycle_locks
 
 async def main():
     async with session_lifecycle_locks({session_ids!r}):
@@ -136,7 +136,7 @@ async def test_session_lifecycle_lock_serializes_across_processes(tmp_path):
     script = f"""
 import asyncio
 from pathlib import Path
-from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
+from workgate.tool_session.lifecycle import session_lifecycle_lock
 
 async def main():
     async with session_lifecycle_lock("SESSION1"):
@@ -220,10 +220,10 @@ async def test_cancelled_cross_process_waiter_releases_local_entry():
 async def test_job_admission_revalidates_after_cross_process_teardown(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.jobs import runtime as jobs_ops
+    from workgate.jobs import runtime as jobs_ops
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -233,8 +233,8 @@ async def test_job_admission_revalidates_after_cross_process_teardown(
     script = f"""
 import asyncio
 from pathlib import Path
-from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.tool_session.lifecycle import session_lifecycle_lock
+from workgate.tool_session.store import get_tool_session_store
 
 async def main():
     async with session_lifecycle_lock({session.session_id!r}):
@@ -304,8 +304,8 @@ async def test_try_lifecycle_lease_skips_local_users_and_lock_uncertainty(
 async def test_expiry_pruning_skips_cross_process_foreground_lease(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -342,9 +342,9 @@ async def test_expiry_pruning_skips_cross_process_foreground_lease(
 async def test_overflow_pruning_skips_cross_process_copy_endpoint_leases(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "86400")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "86400")
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -365,7 +365,7 @@ async def test_overflow_pruning_skips_cross_process_copy_endpoint_leases(
 
     try:
         await _wait_for_process_marker(process, marker)
-        monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+        monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
         clear_settings_cache()
 
         listed_ids = {item.session_id for item in store.list_sessions()}
@@ -387,8 +387,8 @@ async def test_overflow_pruning_skips_cross_process_copy_endpoint_leases(
 async def test_required_expiry_preserves_local_lifecycle_holder(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -412,8 +412,8 @@ async def test_required_expiry_preserves_local_lifecycle_holder(
 async def test_required_expiry_preserves_cross_process_lifecycle_holder(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()

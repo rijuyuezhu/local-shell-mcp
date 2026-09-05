@@ -10,33 +10,33 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.ops.todo as todo_module
-import local_shell_mcp.ops.utils.remote_session as remote_session_module
-import local_shell_mcp.ui.http.common as ui_common_module
-import local_shell_mcp.ui.http.todos as ui_todos_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import (
+import workgate.ops.todo as todo_module
+import workgate.ops.utils.remote_session as remote_session_module
+import workgate.ui.http.common as ui_common_module
+import workgate.ui.http.todos as ui_todos_module
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import (
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_READ,
     SCOPE_SHELL_WRITE,
 )
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-from local_shell_mcp.ops.todo import (
+from workgate.oauth.protocol.token_codec import issue_access_token
+from workgate.ops.todo import (
     TodoConflictError,
     read_todos_execute,
     todo_counts_execute,
     write_todos_execute,
 )
-from local_shell_mcp.remote.tool_specs import (
+from workgate.remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_HUMAN_UI,
 )
-from local_shell_mcp.schemas.result_models.remote import (
+from workgate.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
-from local_shell_mcp.tool_session.store import (
+from workgate.tool_session.store import (
     SESSION_ACTIVE_WINDOW_S,
     SESSION_TERMINATION_PROMPT,
     AgentSession,
@@ -44,7 +44,7 @@ from local_shell_mcp.tool_session.store import (
     get_tool_session_store,
 )
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 
 
 @pytest.fixture(autouse=True)
@@ -66,20 +66,18 @@ def _configure(
     max_todo_bytes: int | None = None,
 ) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(workspace / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(workspace / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_ENABLED", "true" if remote_enabled else "false"
+        "WORKGATE_REMOTE_ENABLED", "true" if remote_enabled else "false"
     )
     if max_todos is not None:
-        monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TODOS", str(max_todos))
+        monkeypatch.setenv("WORKGATE_MAX_TODOS", str(max_todos))
     if max_todo_bytes is not None:
-        monkeypatch.setenv(
-            "LOCAL_SHELL_MCP_MAX_TODO_BYTES", str(max_todo_bytes)
-        )
+        monkeypatch.setenv("WORKGATE_MAX_TODO_BYTES", str(max_todo_bytes))
     clear_settings_cache()
 
 
@@ -276,8 +274,8 @@ def test_todo_core_limits_and_counts_ignore_remote_or_deleted_sessions(
     with pytest.raises(ValueError, match="todo bytes"):
         write_todos_execute([_item("large", "x" * 500)], live.session_id, 0)
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TODOS", "10")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TODO_BYTES", "1000000")
+    monkeypatch.setenv("WORKGATE_MAX_TODOS", "10")
+    monkeypatch.setenv("WORKGATE_MAX_TODO_BYTES", "1000000")
     clear_settings_cache()
     write_todos_execute(
         [

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-import local_shell_mcp.ui.runtime as runtime
-from local_shell_mcp.config.settings import Settings
+import workgate.ui.runtime as runtime
+from workgate.config.settings import Settings
 
 
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -31,7 +31,7 @@ def test_runtime_discovery_uses_explicit_package_and_source_roots(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    package_root = tmp_path / "src" / "local_shell_mcp"
+    package_root = tmp_path / "src" / "workgate"
     source_root = tmp_path
     payload = package_root / "ui_runtime" / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
     source = source_root / "ui-opentui" / "src" / "tui.tsx"
@@ -83,9 +83,9 @@ def test_materialize_embedded_tui_rejects_empty_payload(tmp_path: Path) -> None:
 
 def test_split_tui_command_preserves_windows_quoted_path() -> None:
     assert runtime.split_tui_command(
-        '"C:\\Program Files\\LSM\\local-shell-mcp-tui.exe" --flag',
+        '"C:\\Program Files\\Workgate\\workgate-tui.exe" --flag',
         windows=True,
-    ) == ["C:\\Program Files\\LSM\\local-shell-mcp-tui.exe", "--flag"]
+    ) == ["C:\\Program Files\\Workgate\\workgate-tui.exe", "--flag"]
     with pytest.raises(ValueError, match="empty"):
         runtime.split_tui_command("   ")
 
@@ -93,11 +93,11 @@ def test_split_tui_command_preserves_windows_quoted_path() -> None:
 def test_resolve_tui_command_prefers_configured_command(tmp_path: Path) -> None:
     settings = _settings(
         tmp_path,
-        ui_tui_command='"/opt/LSM TUI" --compact',
+        ui_tui_command='"/opt/Workgate TUI" --compact',
     )
 
     assert runtime.resolve_tui_command(settings) == [
-        "/opt/LSM TUI",
+        "/opt/Workgate TUI",
         "--compact",
     ]
 
@@ -144,9 +144,7 @@ def test_resolve_tui_command_uses_bun_source_fallback(
         lambda name: "/usr/bin/bun" if name == "bun" else None,
     )
     monkeypatch.setattr(runtime.sys, "executable", str(tmp_path / "python"))
-    monkeypatch.setattr(
-        runtime.sys, "argv", [str(tmp_path / "local-shell-mcp")]
-    )
+    monkeypatch.setattr(runtime.sys, "argv", [str(tmp_path / "workgate")])
 
     assert runtime.resolve_tui_command(_settings(tmp_path)) == [
         "/usr/bin/bun",
@@ -211,4 +209,4 @@ def test_run_tui_keeps_token_out_of_argv(
     assert calls[0][0] == ["tui", "--safe"]
     assert "private-token" not in " ".join(calls[0][0])
     assert calls[0][1][runtime.UI_LOCAL_TOKEN_ENV] == "private-token"
-    assert calls[0][1]["LOCAL_SHELL_MCP_UI_MODE"] == "tui"
+    assert calls[0][1]["WORKGATE_UI_MODE"] == "tui"

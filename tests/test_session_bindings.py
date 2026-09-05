@@ -2,12 +2,12 @@ from dataclasses import replace
 
 import pytest
 
-from local_shell_mcp.tool_session.bindings import (
+from workgate.tool_session.bindings import (
     LocalSessionBinding,
     RemoteSessionBinding,
     binding_from_record,
 )
-from local_shell_mcp.tool_session.records import (
+from workgate.tool_session.records import (
     AgentSession,
     session_to_payload,
 )

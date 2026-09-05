@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from local_shell_mcp.utils.serialization import to_jsonable
+from workgate.utils.serialization import to_jsonable
 
 
 class NestedModel(BaseModel):

@@ -6,9 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.types import Message, Receive, Scope, Send
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp, build_mcp_http_app
-from local_shell_mcp.executors.mcp.session_limits import (
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp, build_mcp_http_app
+from workgate.executors.mcp.session_limits import (
     McpSessionLimitMiddleware,
 )
 
@@ -91,13 +91,13 @@ async def test_session_limit_prunes_terminated_bookkeeping_and_rejects_new_sessi
 def test_stateful_mcp_sessions_have_idle_timeout_and_capacity_limit(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S", "7")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MCP_MAX_SESSIONS", "2")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_MCP_SESSION_IDLE_TIMEOUT_S", "7")
+    monkeypatch.setenv("WORKGATE_MCP_MAX_SESSIONS", "2")
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -154,13 +154,13 @@ def test_stateful_mcp_sessions_have_idle_timeout_and_capacity_limit(
 def test_idle_session_expiry_releases_capacity_without_delete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S", "1")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MCP_MAX_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_MCP_SESSION_IDLE_TIMEOUT_S", "1")
+    monkeypatch.setenv("WORKGATE_MCP_MAX_SESSIONS", "1")
     clear_settings_cache()
 
     mcp = build_mcp()

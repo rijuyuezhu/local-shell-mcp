@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from local_shell_mcp.ui.http import common as ui_common
+from workgate.ui.http import common as ui_common
 
 
 def test_json_error_preserves_common_envelope() -> None:

@@ -10,29 +10,29 @@ from fastapi.testclient import TestClient as FastAPITestClient
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.http.downloads import (
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import build_mcp
+from workgate.http.downloads import (
     _token_fingerprint,
     download_routes,
 )
-from local_shell_mcp.ops.downloads import (
+from workgate.ops.downloads import (
     create_file_link_dispatch_execute,
     download_token_fingerprint,
     list_file_links_execute,
     revoke_file_link_execute,
 )
-from local_shell_mcp.ops.utils.download_snapshot import snapshot_directory
-from local_shell_mcp.ops.utils.download_store import backup_path
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.ops.utils.download_snapshot import snapshot_directory
+from workgate.ops.utils.download_store import backup_path
+from workgate.tool_session.store import get_tool_session_store
 
 
 def _reset(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://files.example.test")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://files.example.test")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
 
@@ -86,7 +86,7 @@ def test_share_link_download_limit(tmp_path, monkeypatch):
 
 def test_share_link_can_be_disabled(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_FILE_DOWNLOAD_ENABLED", "false")
     clear_settings_cache()
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
@@ -119,7 +119,7 @@ def test_file_links_are_session_owned(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_file_link_tools_are_registered(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    monkeypatch.setenv("WORKGATE_MODE", "mcp")
     clear_settings_cache()
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
     names = set(tools)
@@ -145,7 +145,7 @@ async def test_file_link_tools_are_registered(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_file_link_tools_are_hidden_in_stdio(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "stdio")
+    monkeypatch.setenv("WORKGATE_MODE", "stdio")
     clear_settings_cache()
     names = {tool.name for tool in await build_mcp().list_tools()}
 
@@ -168,7 +168,7 @@ def test_download_token_fingerprint_does_not_expose_token():
 
 def test_download_tokens_are_redacted_from_audit_logs(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
     clear_settings_cache()
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
@@ -338,7 +338,7 @@ async def test_remote_file_link_streams_validated_snapshot(
         }
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.download_snapshot.call_remote_session_tool",
+        "workgate.ops.utils.download_snapshot.call_remote_session_tool",
         fake_remote_call,
     )
     link = await create_file_link_dispatch_execute(
@@ -407,7 +407,7 @@ async def test_invalid_remote_chunk_removes_staging_snapshot(
         }
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.download_snapshot.call_remote_session_tool",
+        "workgate.ops.utils.download_snapshot.call_remote_session_tool",
         fake_remote_call,
     )
 

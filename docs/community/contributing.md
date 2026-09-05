@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for improving `local-shell-mcp`. Keep changes focused, tested, and aligned with the current Python 3.14 architecture.
+Thanks for improving `workgate`. Keep changes focused, tested, and aligned with the current Python 3.14 architecture.
 
 ## Development checks
 
@@ -14,8 +14,8 @@ uv run mkdocs build --strict
 
 ## Architecture guidelines
 
-- Keep concrete behavior in `src/local_shell_mcp/ops/`.
-- Expose tools through `src/local_shell_mcp/tools/registry/` and the declarative registry unless a dynamic surface is required.
-- Keep server assembly in `src/local_shell_mcp/server/`.
-- Keep remote-worker behavior in `src/local_shell_mcp/remote/`.
+- Keep concrete behavior in `src/workgate/ops/`.
+- Expose tools through `src/workgate/tools/registry/` and the declarative registry unless a dynamic surface is required.
+- Keep server assembly in `src/workgate/server/`.
+- Keep remote-worker behavior in `src/workgate/remote/`.
 - Use Python 3.14 syntax directly; do not add compatibility imports such as `from __future__ import annotations`.

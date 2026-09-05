@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import local_shell_mcp.ops.shell as shell_ops
-import local_shell_mcp.terminal.conpty as conpty
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.schemas.result_models.shell import (
+import workgate.ops.shell as shell_ops
+import workgate.terminal.conpty as conpty
+from workgate.config.settings import clear_settings_cache
+from workgate.schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
@@ -16,8 +16,8 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.terminal.runtime import build_terminal_runtime
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.terminal.runtime import build_terminal_runtime
+from workgate.tool_session.store import get_tool_session_store
 
 
 class FakePty:
@@ -119,8 +119,8 @@ async def _listed_shell_ids() -> set[str]:
 
 
 def test_conpty_shell_lease_reports_live_then_dead(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     lease = conpty._ConPtyShellLease("leased-shell")
 
@@ -135,8 +135,8 @@ def test_conpty_shell_lease_reports_live_then_dead(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_conpty_spawn_failure_releases_shell_lease(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
     def fail_spawn(*_args):
@@ -156,8 +156,8 @@ async def test_conpty_spawn_failure_releases_shell_lease(tmp_path, monkeypatch):
 async def test_conpty_spawn_cancellation_waits_and_closes_process(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     spawn_started = threading.Event()
     allow_spawn = threading.Event()
@@ -195,8 +195,8 @@ async def test_conpty_spawn_cancellation_waits_and_closes_process(
 async def test_conpty_spawn_cancellation_keeps_uncertain_cleanup_visible(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     spawn_started = threading.Event()
     allow_spawn = threading.Event()
@@ -523,8 +523,8 @@ def test_conpty_shell_argument_rendering(monkeypatch):
 async def test_shell_ops_delegate_persistent_shells_to_conpty(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: True

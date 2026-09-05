@@ -1,5 +1,5 @@
 # Full YAML config example.
-# Effective precedence: defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments.
+# Effective precedence: defaults < config file < WORKGATE_* environment variables < CLI arguments.
 
 # Server.
 # Server transport mode.
@@ -29,7 +29,7 @@ ui_wallpaper: "aurora"
 # Root directory for workspace.
 workspace_root: "/workspace"
 # Directory for runtime state. Including audit logs, temporary files, and config
-state_dir: "/workspace/.local-shell-mcp"
+state_dir: "/workspace/.workgate"
 
 # Authentication and OAuth.
 # Authentication mode. Do not expose public services with none.

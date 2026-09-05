@@ -9,8 +9,8 @@ def test_export_tools_json_writes_wrapped_payload(tmp_path):
     env = os.environ.copy()
     env.update(
         {
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
-            "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
+            "WORKGATE_AGENT_BRIDGE_ENABLED": "false",
+            "WORKGATE_REMOTE_ENABLED": "false",
             "PYTHONPATH": "src",
         }
     )
@@ -47,8 +47,8 @@ def test_export_tools_json_writes_instruction_markdown_section(tmp_path):
     env = os.environ.copy()
     env.update(
         {
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
-            "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
+            "WORKGATE_AGENT_BRIDGE_ENABLED": "false",
+            "WORKGATE_REMOTE_ENABLED": "false",
             "PYTHONPATH": "src",
         }
     )

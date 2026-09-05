@@ -24,7 +24,7 @@ import { screenTheme, theme } from "./theme"
 import type { AuditEntry, Machine } from "./types"
 
 const colors = screenTheme.Audit
-const terminalCellAspect = parseTerminalCellAspect(process.env.LOCAL_SHELL_MCP_UI_CELL_ASPECT)
+const terminalCellAspect = parseTerminalCellAspect(process.env.WORKGATE_UI_CELL_ASPECT)
 
 type AuditDialog = { type: "none" } | { type: "search" } | { type: "event" }
 type AuditPane = "list" | "result" | "request"

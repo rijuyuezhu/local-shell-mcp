@@ -13,24 +13,24 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-import local_shell_mcp.ui.http.routes as human_ui_module
-from local_shell_mcp.config.settings import Settings, clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import default_scope
-from local_shell_mcp.oauth.core.state import (
+import workgate.ui.http.routes as human_ui_module
+from workgate.config.settings import Settings, clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import default_scope
+from workgate.oauth.core.state import (
     OAuthState,
     configure_oauth_state,
     oauth_state,
 )
-from local_shell_mcp.oauth.protocol.token_codec import (
+from workgate.oauth.protocol.token_codec import (
     issue_access_token,
     validate_bearer_token,
 )
-from local_shell_mcp.ui.security import (
+from workgate.ui.security import (
     UI_LOCAL_TOKEN_HEADER,
     get_or_create_ui_local_token,
 )
-from local_shell_mcp.ui.session import (
+from workgate.ui.session import (
     UI_CSRF_HEADER,
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_PROTOCOL_PREFIX,
@@ -61,16 +61,14 @@ def _reset_human_ui_state(tmp_path):
 
 
 def _configure_ui(monkeypatch, tmp_path, *, auth_mode="none", **values):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TUI_COMMAND", "test-opentui")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_UI_TUI_COMMAND", "test-opentui")
     for name, value in values.items():
-        monkeypatch.setenv(
-            f"LOCAL_SHELL_MCP_{name.upper()}", str(value).lower()
-        )
+        monkeypatch.setenv(f"WORKGATE_{name.upper()}", str(value).lower())
     clear_settings_cache()
 
 
@@ -136,8 +134,8 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="file-rename"' in index.text
     assert "Migration status" not in index.text
     assert "Human UI foundation active" not in index.text
-    assert "__LSM_UI_PATH__" not in index.text
-    assert "__LSM_UI_ASSET_REV__" not in index.text
+    assert "__WORKGATE_UI_PATH__" not in index.text
+    assert "__WORKGATE_UI_ASSET_REV__" not in index.text
     asset_revision = re.search(r"assets/web\.js\?v=([0-9a-f]{16})", index.text)
     assert asset_revision is not None
     assert f"assetRevision&quot;:&quot;{asset_revision.group(1)}" in index.text
@@ -304,7 +302,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
 
 
 def test_disabled_auth_ignores_stale_ui_session_cookie(monkeypatch, tmp_path):
-    base_url = "https://local-shell-mcp.example"
+    base_url = "https://workgate.example"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -344,7 +342,7 @@ def test_disabled_auth_ignores_stale_ui_session_cookie(monkeypatch, tmp_path):
 
 
 def test_localhost_bypass_ignores_ui_session_cookies(monkeypatch, tmp_path):
-    base_url = "https://local-shell-mcp.example"
+    base_url = "https://workgate.example"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -388,13 +386,13 @@ def test_localhost_bypass_ignores_ui_session_cookies(monkeypatch, tmp_path):
     ("browser_origin", "transport_origin"),
     (
         (
-            "https://local-shell-mcp.example",
-            "https://local-shell-mcp.example",
+            "https://workgate.example",
+            "https://workgate.example",
         ),
         ("http://localhost:8765", "http://localhost:8765"),
         (
-            "https://local-shell-mcp.example",
-            "http://local-shell-mcp.example",
+            "https://workgate.example",
+            "http://workgate.example",
         ),
     ),
     ids=("issuer-origin", "loopback-ui-origin", "tls-terminating-proxy"),
@@ -402,7 +400,7 @@ def test_localhost_bypass_ignores_ui_session_cookies(monkeypatch, tmp_path):
 def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     monkeypatch, tmp_path, browser_origin, transport_origin
 ):
-    base_url = "https://local-shell-mcp.example"
+    base_url = "https://workgate.example"
     admin_pin = "12345678"
     oauth_state().clients.clear()
     oauth_state().codes.clear()
@@ -420,7 +418,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     )
 
     index = client.get("/ui")
-    match = re.search(r'data-lsm-config="([^"]+)"', index.text)
+    match = re.search(r'data-workgate-config="([^"]+)"', index.text)
     assert match is not None
     runtime = json.loads(html.unescape(match.group(1)))
     assert runtime["oauth"] == {
@@ -466,7 +464,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     registration = client.post(
         "/oauth/register",
         json={
-            "client_name": "local-shell-mcp WebUI",
+            "client_name": "Workgate WebUI",
             "redirect_uris": [callback],
         },
     )
@@ -600,7 +598,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
 def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
     monkeypatch, tmp_path
 ):
-    base_url = "https://local-shell-mcp.example"
+    base_url = "https://workgate.example"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -666,7 +664,7 @@ def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
 def test_ui_session_remains_persistent_for_unbounded_bearer(
     monkeypatch, tmp_path
 ):
-    base_url = "https://local-shell-mcp.example"
+    base_url = "https://workgate.example"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -714,8 +712,8 @@ def test_ui_session_remains_persistent_for_unbounded_bearer(
 
 
 def test_ui_cookie_names_are_isolated_by_full_origin():
-    first_origin = "https://local-shell-mcp.example:8443"
-    second_origin = "https://local-shell-mcp.example:9443"
+    first_origin = "https://workgate.example:8443"
+    second_origin = "https://workgate.example:9443"
 
     assert ui_session_cookie_name(first_origin) != ui_session_cookie_name(
         second_origin
@@ -732,8 +730,8 @@ def test_ui_cookie_names_are_isolated_by_full_origin():
 
 
 def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
-    configured = "HTTPS://Local-Shell-MCP.Example:443/ui"
-    canonical = "https://local-shell-mcp.example"
+    configured = "HTTPS://Workgate.Example:443/ui"
+    canonical = "https://workgate.example"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -762,8 +760,8 @@ def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
         "https://[2001:db8::1]"
     )
     assert is_valid_ui_origin(canonical)
-    assert is_valid_ui_origin("https://LOCAL-SHELL-MCP.EXAMPLE:443")
-    assert not is_valid_ui_origin("https://local-shell-mcp.example:444")
+    assert is_valid_ui_origin("https://WORKGATE.EXAMPLE:443")
+    assert not is_valid_ui_origin("https://workgate.example:444")
     assert not is_valid_ui_origin("null")
     assert ui_session_cookie_name(configured) == ui_session_cookie_name(
         canonical
@@ -774,7 +772,7 @@ def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
 def test_ui_session_cookie_cannot_be_replayed_without_origin_binding(
     monkeypatch, tmp_path
 ):
-    base_url = "https://local-shell-mcp.example:8443"
+    base_url = "https://workgate.example:8443"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -828,7 +826,7 @@ def test_ui_session_cookie_cannot_be_replayed_without_origin_binding(
 def test_existing_bearer_can_be_converted_without_exposing_it_to_storage(
     monkeypatch, tmp_path
 ):
-    base_url = "https://local-shell-mcp.example"
+    base_url = "https://workgate.example"
     _configure_ui(
         monkeypatch,
         tmp_path,
@@ -930,7 +928,7 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
         r'src="/control/assets/syntax_highlight\.js\?v=[0-9a-f]{16}"',
         index.text,
     )
-    match = re.search(r'data-lsm-config="([^"]+)"', index.text)
+    match = re.search(r'data-workgate-config="([^"]+)"', index.text)
     assert match is not None
     runtime = json.loads(html.unescape(match.group(1)))
     assert runtime["oauth"] is None

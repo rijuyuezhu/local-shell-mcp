@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide runs `local-shell-mcp` locally, exposes it through Cloudflare Tunnel, and connects ChatGPT to the public `/mcp` endpoint.
+This guide runs `workgate` locally, exposes it through Cloudflare Tunnel, and connects ChatGPT to the public `/mcp` endpoint.
 
 ## Prerequisites
 
@@ -19,8 +19,8 @@ You need:
 ## 1. Install
 
 ```bash
-git clone https://github.com/rijuyuezhu/local-shell-mcp.git
-cd local-shell-mcp
+git clone https://github.com/rijuyuezhu/workgate.git
+cd workgate
 uv sync
 cp .env.example .env
 ```
@@ -32,19 +32,19 @@ Keep the checkout in a stable location if you plan to run it as a service.
 Set these values in `.env`:
 
 ```env
-LOCAL_SHELL_MCP_MODE=mcp
-LOCAL_SHELL_MCP_HOST=127.0.0.1
-LOCAL_SHELL_MCP_PORT=8765
-LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/your/workspace
-LOCAL_SHELL_MCP_STATE_DIR=/path/to/your/workspace/.local-shell-mcp
-LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
-LOCAL_SHELL_MCP_AUTH_MODE=oauth
-LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
-LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
+WORKGATE_MODE=mcp
+WORKGATE_HOST=127.0.0.1
+WORKGATE_PORT=8765
+WORKGATE_WORKSPACE_ROOT=/path/to/your/workspace
+WORKGATE_STATE_DIR=/path/to/your/workspace/.workgate
+WORKGATE_BASE_URL=https://your-public-host.example.com
+WORKGATE_AUTH_MODE=oauth
+WORKGATE_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
+WORKGATE_ALLOW_FULL_CONTROL=false
 CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
-`LOCAL_SHELL_MCP_BASE_URL` is the public origin without `/mcp`. Keep the state directory private: it contains credentials and activity data used by the service.
+`WORKGATE_BASE_URL` is the public origin without `/mcp`. Keep the state directory private: it contains credentials and activity data used by the service.
 
 Leave the example `CLOUDFLARE_TUNNEL_TOKEN` value in place for now. You will replace it with the token copied from Cloudflare in [Step 4](#4-create-and-start-the-tunnel); the detailed dashboard flow is in [Cloudflare Tunnel](cloudflare-tunnel.md).
 
@@ -56,7 +56,7 @@ For every setting and precedence rule, see [Configuration](../reference/configur
 set -a
 . ./.env
 set +a
-uv run local-shell-mcp server --mode mcp
+uv run workgate server --mode mcp
 ```
 
 In another terminal:
@@ -76,7 +76,7 @@ Follow [Cloudflare Tunnel](cloudflare-tunnel.md) to:
 1. create a remotely managed tunnel in the Cloudflare dashboard;
 2. add a published application route from your public hostname to `http://127.0.0.1:8765`;
 3. copy the tunnel token into `CLOUDFLARE_TUNNEL_TOKEN` in `.env`; and
-4. set `LOCAL_SHELL_MCP_BASE_URL` to the same public HTTPS origin.
+4. set `WORKGATE_BASE_URL` to the same public HTTPS origin.
 
 Then start the server and tunnel together:
 
@@ -95,17 +95,17 @@ The Cloudflare guide also covers common routing mistakes.
 ## 5. Keep it running
 
 For a persistent Linux user service, create
-`~/.config/systemd/user/local-shell-mcp.service` with the stable checkout as its
+`~/.config/systemd/user/workgate.service` with the stable checkout as its
 working directory:
 
 ```ini
 [Unit]
-Description=local-shell-mcp
+Description=workgate
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/YOU/Code/local-shell-mcp
+WorkingDirectory=/home/YOU/Code/workgate
 ExecStart=/usr/bin/env bash scripts/run-with-cloudflare-tunnel.sh
 Restart=always
 RestartSec=5
@@ -118,11 +118,11 @@ Reload the user manager, enable the service, and inspect its logs:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now local-shell-mcp.service
-journalctl --user -u local-shell-mcp.service -f -n 200
+systemctl --user enable --now workgate.service
+journalctl --user -u workgate.service -f -n 200
 ```
 
-Use `systemctl --user restart local-shell-mcp.service` after changing `.env`.
+Use `systemctl --user restart workgate.service` after changing `.env`.
 
 ## 6. Connect ChatGPT
 
@@ -133,7 +133,7 @@ See [ChatGPT connector](chatgpt-connector.md) for the exact UI flow.
 ## 7. Try a first task
 
 ```text
-Use local-shell-mcp. Start a session in my project workspace, inspect the repository and its instruction files, then summarize the environment and Git status. Do not change files yet.
+Use workgate. Start a session in my project workspace, inspect the repository and its instruction files, then summarize the environment and Git status. Do not change files yet.
 ```
 
 Continue with [Common workflows](../guides/common-workflows.md), or open the browser interface described in [Human interface](../guides/human-interface.md).

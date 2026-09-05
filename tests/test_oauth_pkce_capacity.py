@@ -10,19 +10,19 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import _add_public_routes_to_mcp_http_app
-from local_shell_mcp.oauth.core import service as oauth_service
-from local_shell_mcp.oauth.core.client_store import client_store_path
-from local_shell_mcp.oauth.core.models import AuthCode, OAuthClient
-from local_shell_mcp.oauth.core.requests import AuthorizationRequestInput
-from local_shell_mcp.oauth.core.state import (
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import _add_public_routes_to_mcp_http_app
+from workgate.oauth.core import service as oauth_service
+from workgate.oauth.core.client_store import client_store_path
+from workgate.oauth.core.models import AuthCode, OAuthClient
+from workgate.oauth.core.requests import AuthorizationRequestInput
+from workgate.oauth.core.state import (
     build_oauth_state,
     configure_oauth_state,
     oauth_state,
 )
 
-BASE_URL = "https://local-shell-mcp.example.com"
+BASE_URL = "https://workgate.example.com"
 RESOURCE_URL = f"{BASE_URL}/mcp"
 REDIRECT_URL = "https://client.example/callback"
 ADMIN_PIN = "1234"
@@ -42,10 +42,10 @@ def _reset_oauth_state(tmp_path):
 
 @pytest.fixture
 def oauth_client(tmp_path, monkeypatch) -> TestClient:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", ADMIN_PIN)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", ADMIN_PIN)
     clear_settings_cache()
     return TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
 
@@ -256,7 +256,7 @@ def test_valid_s256_flow_rejects_wrong_verifier_and_code_reuse(oauth_client):
 def test_pending_code_capacity_preserves_live_code_and_pending_client(
     oauth_client, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "1")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_PENDING_CODES", "1")
     clear_settings_cache()
 
     first_verifier = "a" * 64
@@ -314,8 +314,8 @@ def test_pending_code_capacity_preserves_live_code_and_pending_client(
 def test_expired_or_used_code_pruning_restores_capacity(
     oauth_client, monkeypatch, used
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "1")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S", "10")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_PENDING_CODES", "1")
+    monkeypatch.setenv("WORKGATE_OAUTH_CODE_TTL_S", "10")
     clear_settings_cache()
 
     stale_code = "stale"
@@ -342,7 +342,7 @@ def test_expired_or_used_code_pruning_restores_capacity(
 def test_zero_pending_code_capacity_limit_allows_multiple_live_codes(
     oauth_client, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "0")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_PENDING_CODES", "0")
     clear_settings_cache()
 
     client_id = _register(oauth_client)
@@ -355,7 +355,7 @@ def test_zero_pending_code_capacity_limit_allows_multiple_live_codes(
 
 
 def test_capacity_rejection_survives_audit_failure(oauth_client, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "1")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_PENDING_CODES", "1")
     clear_settings_cache()
     oauth_state().codes["live"] = AuthCode(
         code="live",
@@ -386,7 +386,7 @@ def test_capacity_rejection_survives_audit_failure(oauth_client, monkeypatch):
 def test_concurrent_authorization_respects_pending_code_capacity(
     oauth_client, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "1")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_PENDING_CODES", "1")
     clear_settings_cache()
     client_id = "approved-client"
     oauth_state().clients[client_id] = OAuthClient(

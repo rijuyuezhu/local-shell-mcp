@@ -10,26 +10,26 @@ from urllib.parse import urlsplit
 import pytest
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
-import local_shell_mcp.agent_bridge.mcp as mcp_module
-from local_shell_mcp.agent_bridge.auth import (
+import workgate.agent_bridge.mcp as mcp_module
+from workgate.agent_bridge.auth import (
     PersistentOAuthClientProvider,
     build_oauth_client_metadata,
     oauth_status,
     resolve_config_mapping,
 )
-from local_shell_mcp.agent_bridge.auth_store import (
+from workgate.agent_bridge.auth_store import (
     AgentAuthStore,
     AgentAuthStoreCorruptError,
     AgentOAuthTokenStorage,
     AgentSecretNotFoundError,
 )
-from local_shell_mcp.agent_bridge.cli import (
+from workgate.agent_bridge.cli import (
     LoopbackOAuthCallback,
 )
-from local_shell_mcp.agent_bridge.mcp import AgentMcpClientManager
-from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
-from local_shell_mcp.agent_bridge.state import agent_registry_fingerprint
-from local_shell_mcp.agent_bridge.status import registry_config_status
+from workgate.agent_bridge.mcp import AgentMcpClientManager
+from workgate.agent_bridge.models import AgentMcpServerConfig
+from workgate.agent_bridge.state import agent_registry_fingerprint
+from workgate.agent_bridge.status import registry_config_status
 
 
 def _client_info() -> OAuthClientInformationFull:
@@ -336,7 +336,7 @@ async def test_loopback_oauth_callback_accepts_only_expected_path():
 def test_public_registry_status_hides_secret_reference_names_and_values(
     tmp_path,
 ):
-    from local_shell_mcp.agent_bridge.registry import build_agent_registry
+    from workgate.agent_bridge.registry import build_agent_registry
 
     config_dir = tmp_path / "agent_config"
     config_dir.mkdir()
@@ -418,9 +418,7 @@ def test_auth_status_covers_none_missing_refreshable_expired_and_authorized(
     assert missing["missing_secret_count"] == 1
 
     store = AgentAuthStore(tmp_path / "agent_auth")
-    monkeypatch.setattr(
-        "local_shell_mcp.agent_bridge.auth.time.time", lambda: 100.0
-    )
+    monkeypatch.setattr("workgate.agent_bridge.auth.time.time", lambda: 100.0)
 
     store.set_tokens(
         "docs",
@@ -455,7 +453,7 @@ def test_auth_status_covers_none_missing_refreshable_expired_and_authorized(
 
 
 def test_auth_manager_compatibility_fallbacks_hide_failures():
-    from local_shell_mcp.agent_bridge.auth import (
+    from workgate.agent_bridge.auth import (
         manager_auth_status,
         manager_redaction_maps,
     )
@@ -486,7 +484,7 @@ def test_auth_manager_compatibility_fallbacks_hide_failures():
 
 
 def test_build_oauth_provider_requires_url(tmp_path):
-    from local_shell_mcp.agent_bridge.auth import build_stored_oauth_provider
+    from workgate.agent_bridge.auth import build_stored_oauth_provider
 
     server = AgentMcpServerConfig.model_construct(
         type="http",

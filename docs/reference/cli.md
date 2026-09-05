@@ -3,16 +3,16 @@
 Every runtime mode is selected by an explicit argparse subcommand.
 
 ```text
-local-shell-mcp server [--config PATH] [--mode MODE] [--host HOST] [--port PORT] [--workspace-root PATH] [...]
+workgate server [--config PATH] [--mode MODE] [--host HOST] [--port PORT] [--workspace-root PATH] [...]
 ```
 
 Use the built-in help for exact parser output:
 
 ```bash
-local-shell-mcp --help
-local-shell-mcp server --help
-local-shell-mcp tui --help
-local-shell-mcp worker --help
+workgate --help
+workgate server --help
+workgate tui --help
+workgate worker --help
 ```
 
 ## Server modes
@@ -29,19 +29,19 @@ local-shell-mcp worker --help
 Run a local MCP server without OAuth:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode mcp
+WORKGATE_AUTH_MODE=none uv run workgate server --mode mcp
 ```
 
 Run the REST debug API:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode http
+WORKGATE_AUTH_MODE=none uv run workgate server --mode http
 ```
 
 Run with a specific workspace root:
 
 ```bash
-LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project uv run local-shell-mcp server --mode mcp
+WORKGATE_WORKSPACE_ROOT=/path/to/project uv run workgate server --mode mcp
 ```
 
 ## Boolean arguments
@@ -49,14 +49,14 @@ LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project uv run local-shell-mcp server --
 Boolean CLI values are explicit:
 
 ```bash
-local-shell-mcp server --allow-full-control false
-local-shell-mcp server --remote-enabled true
+workgate server --allow-full-control false
+workgate server --remote-enabled true
 ```
 
-Every `LOCAL_SHELL_MCP_*` application setting has a matching CLI flag using lowercase dashed form. For example:
+Every `WORKGATE_*` application setting has a matching CLI flag using lowercase dashed form. For example:
 
 ```text
-LOCAL_SHELL_MCP_REMOTE_ENABLED -> --remote-enabled true
+WORKGATE_REMOTE_ENABLED -> --remote-enabled true
 ```
 
 ## Remote worker commands
@@ -64,17 +64,17 @@ LOCAL_SHELL_MCP_REMOTE_ENABLED -> --remote-enabled true
 The worker CLI has an explicit breaking-clean subcommand tree:
 
 ```text
-local-shell-mcp worker enroll --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
-local-shell-mcp worker connect --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
-local-shell-mcp worker run
-local-shell-mcp worker install-service [--no-start]
-local-shell-mcp worker uninstall-service
-local-shell-mcp worker start
-local-shell-mcp worker stop
-local-shell-mcp worker restart
-local-shell-mcp worker status
-local-shell-mcp worker logs [--lines N] [--follow]
-local-shell-mcp worker update [--force]
+workgate worker enroll --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
+workgate worker connect --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
+workgate worker run
+workgate worker install-service [--no-start]
+workgate worker uninstall-service
+workgate worker start
+workgate worker stop
+workgate worker restart
+workgate worker status
+workgate worker logs [--lines N] [--follow]
+workgate worker update [--force]
 ```
 
 `enroll` persists identity and exits. `connect` enrolls or resumes and stays in the foreground. `run` uses only the private persisted identity and is the command referenced by managed services and verified runtime re-exec. `--invite-stdin` accepts bounded UTF-8 from non-interactive stdin and avoids shell-history retention.

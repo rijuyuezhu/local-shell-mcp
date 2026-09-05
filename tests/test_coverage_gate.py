@@ -15,10 +15,10 @@ def test_coverage_paths_canonicalize_managed_runtime_sources() -> None:
     )
     paths = config["tool"]["coverage"]["paths"]["source"]
 
-    assert paths[0] == "src/local_shell_mcp"
-    assert "local_shell_mcp" in paths
-    assert "*/.local-shell-mcp-worker/runtimes/*/local_shell_mcp" in paths
-    assert "*/runtimes/*/local_shell_mcp" in paths
+    assert paths[0] == "src/workgate"
+    assert "workgate" in paths
+    assert "*/.workgate-worker/runtimes/*/workgate" in paths
+    assert "*/runtimes/*/workgate" in paths
 
 
 def _entry(percent: float, statements: int = 10) -> dict[str, Any]:
@@ -76,44 +76,44 @@ def _run(
 def _policy() -> dict[str, Any]:
     return {
         "adapter_files": [
-            "src/local_shell_mcp/remote/http.py",
-            "src/local_shell_mcp/remote/responses.py",
-            "src/local_shell_mcp/remote/service.py",
-            "src/local_shell_mcp/tools/local_handlers.py",
+            "src/workgate/remote/http.py",
+            "src/workgate/remote/responses.py",
+            "src/workgate/remote/service.py",
+            "src/workgate/tools/local_handlers.py",
         ],
         "adapter_prefixes": [
-            "src/local_shell_mcp/executors/",
-            "src/local_shell_mcp/http/",
-            "src/local_shell_mcp/schemas/",
-            "src/local_shell_mcp/tools/registry/",
-            "src/local_shell_mcp/ui/http/",
+            "src/workgate/executors/",
+            "src/workgate/http/",
+            "src/workgate/schemas/",
+            "src/workgate/tools/registry/",
+            "src/workgate/ui/http/",
         ],
         "critical_existing_drift_percent": 0.05,
         "critical_files": sorted(
             [
-                "src/local_shell_mcp/agent_bridge/auth.py",
-                "src/local_shell_mcp/agent_bridge/auth_store.py",
-                "src/local_shell_mcp/agent_bridge/redaction.py",
-                "src/local_shell_mcp/config/settings.py",
-                "src/local_shell_mcp/ops/files.py",
-                "src/local_shell_mcp/jobs/runtime.py",
-                "src/local_shell_mcp/ops/patch/envelope.py",
-                "src/local_shell_mcp/ops/secret_scan.py",
-                "src/local_shell_mcp/ops/shell.py",
-                "src/local_shell_mcp/ops/transfer.py",
-                "src/local_shell_mcp/remote/manager.py",
-                "src/local_shell_mcp/remote/transfer_gateway.py",
-                "src/local_shell_mcp/tool_session/store.py",
-                "src/local_shell_mcp/ui/security.py",
-                "src/local_shell_mcp/utils/path_locks.py",
-                "src/local_shell_mcp/utils/private_files.py",
+                "src/workgate/agent_bridge/auth.py",
+                "src/workgate/agent_bridge/auth_store.py",
+                "src/workgate/agent_bridge/redaction.py",
+                "src/workgate/config/settings.py",
+                "src/workgate/ops/files.py",
+                "src/workgate/jobs/runtime.py",
+                "src/workgate/ops/patch/envelope.py",
+                "src/workgate/ops/secret_scan.py",
+                "src/workgate/ops/shell.py",
+                "src/workgate/ops/transfer.py",
+                "src/workgate/remote/manager.py",
+                "src/workgate/remote/transfer_gateway.py",
+                "src/workgate/tool_session/store.py",
+                "src/workgate/ui/security.py",
+                "src/workgate/utils/path_locks.py",
+                "src/workgate/utils/private_files.py",
             ]
         ),
         "critical_prefixes": [
-            "src/local_shell_mcp/audit/",
-            "src/local_shell_mcp/oauth/",
-            "src/local_shell_mcp/remote_worker/",
-            "src/local_shell_mcp/terminal/",
+            "src/workgate/audit/",
+            "src/workgate/oauth/",
+            "src/workgate/remote_worker/",
+            "src/workgate/terminal/",
         ],
         "default_existing_drift_percent": 1.0,
         "new_adapter_min_percent": 60.0,
@@ -138,8 +138,8 @@ def test_write_baseline_and_accept_equal_report(tmp_path: Path) -> None:
     report = _report(
         91.25,
         {
-            "src/local_shell_mcp/a.py": _entry(92.5),
-            "src/local_shell_mcp/empty.py": _entry(100.0, statements=0),
+            "src/workgate/a.py": _entry(92.5),
+            "src/workgate/empty.py": _entry(100.0, statements=0),
         },
     )
     written = _run(tmp_path, report, write_baseline=True)
@@ -159,15 +159,15 @@ def test_write_baseline_uses_cross_environment_minima(tmp_path: Path) -> None:
     first = _report(
         93.0,
         {
-            "src/local_shell_mcp/a.py": _entry(95.0),
-            "src/local_shell_mcp/b.py": _entry(70.0),
+            "src/workgate/a.py": _entry(95.0),
+            "src/workgate/b.py": _entry(70.0),
         },
     )
     second = _report(
         90.0,
         {
-            "src/local_shell_mcp/a.py": _entry(80.0),
-            "src/local_shell_mcp/b.py": _entry(90.0),
+            "src/workgate/a.py": _entry(80.0),
+            "src/workgate/b.py": _entry(90.0),
         },
     )
     written = _run(tmp_path, [first, second], write_baseline=True)
@@ -175,30 +175,26 @@ def test_write_baseline_uses_cross_environment_minima(tmp_path: Path) -> None:
     baseline = json.loads((tmp_path / "baseline.json").read_text())
     assert baseline["report_count"] == 2
     assert baseline["total_percent_covered"] == 90.0
-    assert (
-        baseline["files"]["src/local_shell_mcp/a.py"]["percent_covered"] == 80.0
-    )
-    assert (
-        baseline["files"]["src/local_shell_mcp/b.py"]["percent_covered"] == 70.0
-    )
+    assert baseline["files"]["src/workgate/a.py"]["percent_covered"] == 80.0
+    assert baseline["files"]["src/workgate/b.py"]["percent_covered"] == 70.0
     assert _run(tmp_path, first, baseline).returncode == 0
     assert _run(tmp_path, second, baseline).returncode == 0
 
 
 def test_write_baseline_rejects_mismatched_source_sets(tmp_path: Path) -> None:
-    first = _report(90.0, {"src/local_shell_mcp/a.py": _entry(90.0)})
-    second = _report(90.0, {"src/local_shell_mcp/b.py": _entry(90.0)})
+    first = _report(90.0, {"src/workgate/a.py": _entry(90.0)})
+    second = _report(90.0, {"src/workgate/b.py": _entry(90.0)})
     written = _run(tmp_path, [first, second], write_baseline=True)
     assert written.returncode == 2
     assert "different source set" in written.stderr
 
 
 def test_rejects_total_coverage_regression(tmp_path: Path) -> None:
-    report = _report(80.0, {"src/local_shell_mcp/a.py": _entry(90.0)})
+    report = _report(80.0, {"src/workgate/a.py": _entry(90.0)})
     baseline = _baseline(
         81.0,
         {
-            "src/local_shell_mcp/a.py": {
+            "src/workgate/a.py": {
                 "percent_covered": 90.0,
                 "num_statements": 10,
                 "num_branches": 4,
@@ -211,11 +207,11 @@ def test_rejects_total_coverage_regression(tmp_path: Path) -> None:
 
 
 def test_allows_one_point_existing_module_drift(tmp_path: Path) -> None:
-    report = _report(95.0, {"src/local_shell_mcp/a.py": _entry(91.0)})
+    report = _report(95.0, {"src/workgate/a.py": _entry(91.0)})
     baseline = _baseline(
         95.0,
         {
-            "src/local_shell_mcp/a.py": {
+            "src/workgate/a.py": {
                 "percent_covered": 92.0,
                 "num_statements": 10,
                 "num_branches": 4,
@@ -231,11 +227,11 @@ def test_allows_one_point_existing_module_drift(tmp_path: Path) -> None:
 def test_rejects_existing_module_regression_beyond_allowance(
     tmp_path: Path,
 ) -> None:
-    report = _report(95.0, {"src/local_shell_mcp/a.py": _entry(90.9)})
+    report = _report(95.0, {"src/workgate/a.py": _entry(90.9)})
     baseline = _baseline(
         95.0,
         {
-            "src/local_shell_mcp/a.py": {
+            "src/workgate/a.py": {
                 "percent_covered": 92.0,
                 "num_statements": 10,
                 "num_branches": 4,
@@ -251,7 +247,7 @@ def test_rejects_existing_module_regression_beyond_allowance(
 
 
 def test_critical_modules_keep_near_zero_drift(tmp_path: Path) -> None:
-    path = "src/local_shell_mcp/oauth/core/security.py"
+    path = "src/workgate/oauth/core/security.py"
     report = _report(95.0, {path: _entry(91.9)})
     baseline = _baseline(
         95.0,
@@ -272,7 +268,7 @@ def test_critical_modules_keep_near_zero_drift(tmp_path: Path) -> None:
 
 def test_requires_eighty_percent_for_new_core_modules(tmp_path: Path) -> None:
     tracked = {
-        "src/local_shell_mcp/tracked.py": {
+        "src/workgate/tracked.py": {
             "percent_covered": 95.0,
             "num_statements": 10,
             "num_branches": 4,
@@ -281,15 +277,15 @@ def test_requires_eighty_percent_for_new_core_modules(tmp_path: Path) -> None:
     failing = _report(
         95.0,
         {
-            "src/local_shell_mcp/tracked.py": _entry(95.0),
-            "src/local_shell_mcp/new.py": _entry(79.0),
+            "src/workgate/tracked.py": _entry(95.0),
+            "src/workgate/new.py": _entry(79.0),
         },
     )
     passing = _report(
         95.0,
         {
-            "src/local_shell_mcp/tracked.py": _entry(95.0),
-            "src/local_shell_mcp/new.py": _entry(80.0),
+            "src/workgate/tracked.py": _entry(95.0),
+            "src/workgate/new.py": _entry(80.0),
         },
     )
 
@@ -303,24 +299,24 @@ def test_requires_eighty_percent_for_new_core_modules(tmp_path: Path) -> None:
 
 def test_requires_sixty_percent_for_new_adapter_modules(tmp_path: Path) -> None:
     tracked = {
-        "src/local_shell_mcp/tracked.py": {
+        "src/workgate/tracked.py": {
             "percent_covered": 95.0,
             "num_statements": 10,
             "num_branches": 4,
         }
     }
-    adapter = "src/local_shell_mcp/ui/http/new_adapter.py"
+    adapter = "src/workgate/ui/http/new_adapter.py"
     failing = _report(
         95.0,
         {
-            "src/local_shell_mcp/tracked.py": _entry(95.0),
+            "src/workgate/tracked.py": _entry(95.0),
             adapter: _entry(59.0),
         },
     )
     passing = _report(
         95.0,
         {
-            "src/local_shell_mcp/tracked.py": _entry(95.0),
+            "src/workgate/tracked.py": _entry(95.0),
             adapter: _entry(60.0),
         },
     )
@@ -336,12 +332,12 @@ def test_requires_sixty_percent_for_new_adapter_modules(tmp_path: Path) -> None:
 def test_ignores_deleted_and_empty_new_modules(tmp_path: Path) -> None:
     report = _report(
         95.0,
-        {"src/local_shell_mcp/empty.py": _entry(0.0, statements=0)},
+        {"src/workgate/empty.py": _entry(0.0, statements=0)},
     )
     baseline = _baseline(
         95.0,
         {
-            "src/local_shell_mcp/deleted.py": {
+            "src/workgate/deleted.py": {
                 "percent_covered": 100.0,
                 "num_statements": 5,
                 "num_branches": 0,
@@ -354,7 +350,7 @@ def test_ignores_deleted_and_empty_new_modules(tmp_path: Path) -> None:
 
 
 def test_rejects_policy_changes_in_baseline(tmp_path: Path) -> None:
-    report = _report(95.0, {"src/local_shell_mcp/a.py": _entry(95.0)})
+    report = _report(95.0, {"src/workgate/a.py": _entry(95.0)})
     baseline = _baseline(95.0, {})
     baseline["policy"]["default_existing_drift_percent"] = 2.0
 
@@ -367,7 +363,7 @@ def test_rejects_policy_changes_in_baseline(tmp_path: Path) -> None:
 def test_rejects_unmapped_subprocess_source_paths(tmp_path: Path) -> None:
     report = _report(
         95.0,
-        {"/tmp/runtime/local_shell_mcp/a.py": _entry(95.0)},
+        {"/tmp/runtime/workgate/a.py": _entry(95.0)},
     )
     checked = _run(tmp_path, report, _baseline(95.0, {}))
     assert checked.returncode == 2

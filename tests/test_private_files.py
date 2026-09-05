@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import local_shell_mcp.utils.private_files as private_files
+import workgate.utils.private_files as private_files
 
 
 def test_windows_file_lock_retries_contention(monkeypatch, tmp_path):

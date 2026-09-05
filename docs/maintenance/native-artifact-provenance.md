@@ -10,8 +10,8 @@ vary by platform and release build.
 The optional native terminal client is maintained in `ui-opentui/`. It was
 adapted from upstream OpenTUI work through upstream commit `54f246e` and then
 integrated with the fork's session-, machine-, OAuth-, audit-, and terminal APIs.
-It has no independent product version: `local-shell-mcp-tui --version` reports
-the enclosing `local-shell-mcp` release version.
+It has no independent product version: `workgate-tui --version` reports
+the enclosing `workgate` release version.
 
 ### Locked inputs
 
@@ -22,16 +22,16 @@ the enclosing `local-shell-mcp` release version.
 | `@opentui/react` | `0.4.3` |
 | React | `19.2.0` |
 | React reconciler | `0.33.0` |
-| `ui-opentui/package.json` | `dac1801bc8f6ae034ba092bb780a173f30cd47f343d626f43bb3895df1920238` |
-| `ui-opentui/bun.lock` | `5412a17ab4bbd8695c361f944bf5286302c8635a548643cf7ad2a4653b0ef8b3` |
-| `src/local_shell_mcp/ui/contracts.py` | `b55fbc2642df6d06233f472d52fe04625abfa2da8fb9f339c06e55220680d374` |
-| `scripts/generation/generate-tui-executable-contract.py` | `069cbaf02b1563fc6599aeca0a4f1ba579e0526276d020f441b2e9832be47f18` |
-| `ui-opentui/scripts/executable-contract.ts` | `424e7b00f8acfac0e20f7432891b916a67df852ae4b39ec46730728a7fa1e9f0` |
-| `ui-opentui/scripts/compile-tui.ts` | `2a51b3ccc85a5823d3ad28676ebadcce951651c517b9f15c6d77e00778d4abb8` |
-| `scripts/release/build-platform-wheel.py` | `93968eb5af540f686cb83dc572b8c8445603b0ff0a540dafd676d3c1fa8010a5` |
-| `scripts/release/smoke-platform-wheel.py` | `dc8acea2f3f3dd82e19bf61308f2d0e9360c39fe678d98c79b81ded3ef616407` |
-| `src/local_shell_mcp/helpers/opentui.NOTICES` | `73d026453521d235c1df46f2dcf90943661258695e8eed87ba2c91e7caa03e61` |
-| `src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md` | `2c6160ec8fb853f7e8f97d9b249e756c9b0ac44860a68b6bf4f1b0bcbc5c3741` |
+| `ui-opentui/package.json` | `a9b46c8bc5ceb1e3c8a1cc58af555783b49efc0a8f8475d497ecf8f2c709be83` |
+| `ui-opentui/bun.lock` | `583acaf7f7933f2c741c944f448164dd1a64cc82db8c78fb57e93291923dff81` |
+| `src/workgate/ui/contracts.py` | `5b6dcda2bf52fbcc357140782952cd4405e99d8b5bbe4169279b229693685425` |
+| `scripts/generation/generate-tui-executable-contract.py` | `a99480cf845b1adc7f6877f953712530c97eb0c084bbaacd235635db9ebea767` |
+| `ui-opentui/scripts/executable-contract.ts` | `ac972b10fbf21ccef6e94ece2a9bc44a701607d822a1333cf991a68c91d45b13` |
+| `ui-opentui/scripts/compile-tui.ts` | `df87f2c0e891651a44dbda60b5d3cda6007592ee008235bc958ca111e27ad298` |
+| `scripts/release/build-platform-wheel.py` | `a4861240c4189475ae3023a8db93a660faa6cc6acb47b0c6d457cea91405c947` |
+| `scripts/release/smoke-platform-wheel.py` | `b551a1c11d67c51482b29429562a5e915a640bbfae297ae54e7049a1263b1071` |
+| `src/workgate/helpers/opentui.NOTICES` | `ddccf8cb0fa731bdca8e0f499a4a2e06deaf155d587cff3af77379201cd00e35` |
+| `src/workgate/helpers/bun-1.3.14.LICENSE.md` | `2c6160ec8fb853f7e8f97d9b249e756c9b0ac44860a68b6bf4f1b0bcbc5c3741` |
 
 All source and notice digests in this table are SHA-256 over UTF-8 text after
 universal-newline normalization to LF. This keeps the lock stable when Git uses
@@ -61,12 +61,12 @@ and smoke path exist. Linux wheels use truthful `linux_*` tags rather than an
 unverified manylinux claim.
 
 The project source is MIT-licensed. Locked JavaScript/runtime dependency notices
-are shipped as `src/local_shell_mcp/helpers/opentui.NOTICES` and copied into
+are shipped as `src/workgate/helpers/opentui.NOTICES` and copied into
 executable archives as `OPENTUI-NOTICES.txt`. The notice records the locked MIT
 packages and BSD-3-Clause `diff`; TypeScript is an Apache-2.0 build-time tool.
 
 The compiled sidecar embeds Bun 1.3.14. Its verbatim tag `LICENSE.md` is shipped
-as `src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md` and as
+as `src/workgate/helpers/bun-1.3.14.LICENSE.md` and as
 `BUN-1.3.14-LICENSE.md` beside frozen executables. That record identifies Bun as
 MIT, JavaScriptCore/WebKit as LGPL-2, tinycc as LGPL-2.1, and the remaining linked
 libraries and polyfills under their listed terms. It also gives the patched
@@ -87,7 +87,7 @@ uv run python scripts/release/build-platform-wheel.py \
   --platform-tag linux_x86_64 \
   --output-dir dist
 uv run python scripts/release/smoke-platform-wheel.py \
-  --state-dir /tmp/local-shell-mcp-wheel-state
+  --state-dir /tmp/workgate-wheel-state
 ```
 
 Use the platform tag matching the native runner. Release workflow artifacts are

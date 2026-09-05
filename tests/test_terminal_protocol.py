@@ -1,6 +1,6 @@
 import pytest
 
-from local_shell_mcp.ui.http.terminal_protocol import (
+from workgate.ui.http.terminal_protocol import (
     UI_TERMINAL_INPUT_MAX_BYTES,
     TerminalCloseControl,
     TerminalInputControl,

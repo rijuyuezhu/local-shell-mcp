@@ -6,23 +6,23 @@ from pathlib import Path
 
 import pytest
 
-import local_shell_mcp.ops.files as files_ops
-import local_shell_mcp.tools.registry.files as files_registry
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.ops.files import (
+import workgate.ops.files as files_ops
+import workgate.tools.registry.files as files_registry
+from tests.helpers import nested_mcp_text
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.executors.mcp.app import build_mcp
+from workgate.ops.files import (
     delete_file_or_dir_execute,
     list_files_execute,
     parse_hashline_edit_input,
     read_file_execute,
     write_file_execute,
 )
-from local_shell_mcp.ops.shell import check_command_policy
-from local_shell_mcp.ops.utils.path import resolve_path
-from local_shell_mcp.tool_session.bindings import LocalSessionBinding
-from local_shell_mcp.tool_session.resolver import SessionResolver
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from tests.helpers import nested_mcp_text
+from workgate.ops.shell import check_command_policy
+from workgate.ops.utils.path import resolve_path
+from workgate.tool_session.bindings import LocalSessionBinding
+from workgate.tool_session.resolver import SessionResolver
+from workgate.tool_session.store import get_tool_session_store
 
 
 def _create_session() -> str:
@@ -73,7 +73,7 @@ def _hashline_edit(input_text: str, session_id: str | None = None):
 
 
 def test_write_and_read_round_trip(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     write_file_execute("a.txt", "hello world")
     assert read_file_execute("a.txt").content == "hello world"
@@ -83,7 +83,7 @@ def test_write_and_read_round_trip(tmp_path, monkeypatch):
 async def test_registered_file_handlers_round_trip_grounded_edits(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     session_id = _create_session()
 
@@ -125,7 +125,7 @@ async def test_registered_file_handlers_round_trip_grounded_edits(
 
 
 def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     listed_dir = tmp_path / "listed"
     listed_dir.mkdir()
@@ -149,7 +149,7 @@ def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
     os.name == "nt", reason="symlink creation may require elevated privileges"
 )
 def test_list_and_delete_preserve_final_symlink(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     target = tmp_path / "target"
     target.mkdir()
@@ -172,7 +172,7 @@ def test_list_and_delete_preserve_final_symlink(tmp_path, monkeypatch):
 
 
 def test_read_text_rejects_invalid_utf8(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "invalid.bin").write_bytes(b"\xff\xfe\xfd")
 
@@ -181,7 +181,7 @@ def test_read_text_rejects_invalid_utf8(tmp_path, monkeypatch):
 
 
 def test_read_text_allows_valid_utf8_control_bytes(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "nul.txt").write_bytes(b"abc\x00def")
 
@@ -193,7 +193,7 @@ def test_read_text_allows_valid_utf8_control_bytes(tmp_path, monkeypatch):
 def test_read_text_returns_line_numbers_and_snapshot_metadata(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "lines.txt").write_text(
         "alpha\nbeta\ngamma\n", encoding="utf-8"
@@ -222,8 +222,8 @@ def test_read_text_returns_line_numbers_and_snapshot_metadata(
 
 
 def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "5")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MAX_FILE_READ_BYTES", "5")
     clear_settings_cache()
     (tmp_path / "long.txt").write_text("hello world", encoding="utf-8")
 
@@ -240,7 +240,7 @@ def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
 def test_write_text_does_not_read_existing_file_before_overwrite(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "existing.txt").write_text("old", encoding="utf-8")
 
@@ -259,7 +259,7 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not portable")
 def test_atomic_write_preserves_existing_file_mode(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     path = tmp_path / "mode.txt"
     path.write_text("old", encoding="utf-8")
@@ -272,7 +272,7 @@ def test_atomic_write_preserves_existing_file_mode(tmp_path, monkeypatch):
 
 
 def test_concurrent_overwrite_false_creates_file_once(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     barrier = threading.Barrier(2)
 
@@ -295,7 +295,7 @@ def test_concurrent_overwrite_false_creates_file_once(tmp_path, monkeypatch):
 
 
 def test_concurrent_snapshot_edits_reject_stale_writer(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     path = tmp_path / "shared.txt"
     path.write_text("alpha\nbeta\n", encoding="utf-8")
@@ -334,7 +334,7 @@ def test_concurrent_snapshot_edits_reject_stale_writer(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_reports_non_utf8_errors(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "blob.bin").write_bytes(b"abc\xffworld")
 
@@ -348,8 +348,8 @@ async def test_fetch_reports_non_utf8_errors(tmp_path, monkeypatch):
 
 
 def test_reject_path_escape(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "false")
     clear_settings_cache()
     with pytest.raises(ValueError):
         resolve_path("/etc/passwd")
@@ -358,8 +358,8 @@ def test_reject_path_escape(tmp_path, monkeypatch):
 def test_full_container_mode_disables_builtin_restrictions(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "true")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "true")
     clear_settings_cache()
 
     settings = get_settings()
@@ -374,8 +374,8 @@ def test_full_container_mode_disables_builtin_restrictions(
 
 
 def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "4")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MAX_FILE_READ_BYTES", "4")
     clear_settings_cache()
     (tmp_path / "utf8.txt").write_text("你好", encoding="utf-8")
 
@@ -387,7 +387,7 @@ def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
 
 
 def test_parse_read_target_supports_line_and_raw_selectors():
-    from local_shell_mcp.tool_session.selectors import parse_read_target
+    from workgate.tool_session.selectors import parse_read_target
 
     assert parse_read_target("src/foo.py:50-80").path == "src/foo.py"
     ranged = parse_read_target("src/foo.py:50+20:raw")
@@ -419,7 +419,7 @@ def test_parse_read_target_supports_line_and_raw_selectors():
     ],
 )
 def test_parse_read_target_rejects_invalid_multi_range_selectors(target):
-    from local_shell_mcp.tool_session.selectors import parse_read_target
+    from workgate.tool_session.selectors import parse_read_target
 
     with pytest.raises(ValueError):
         parse_read_target(target)
@@ -428,7 +428,7 @@ def test_parse_read_target_rejects_invalid_multi_range_selectors(target):
 def test_read_file_execute_multi_ranges_records_grounding_and_edits(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "multi.py").write_text(
         "one\ntwo\nthree\nfour\nfive\n", encoding="utf-8"
@@ -470,7 +470,7 @@ def test_read_file_execute_multi_ranges_records_grounding_and_edits(
 def test_edit_lines_uses_snapshot_and_returns_diff_context(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text(
         "alpha\nbeta\ngamma\ndelta\n", encoding="utf-8"
@@ -503,7 +503,7 @@ def test_edit_lines_uses_snapshot_and_returns_diff_context(
 
 
 def test_edit_lines_rejects_stale_snapshot(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
     session_id = _create_session()
@@ -524,7 +524,7 @@ def test_edit_lines_rejects_stale_snapshot(tmp_path, monkeypatch):
 
 
 def test_edit_lines_rejects_unseen_snapshot_range(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     session_id = _create_session()
@@ -544,7 +544,7 @@ def test_edit_lines_rejects_unseen_snapshot_range(tmp_path, monkeypatch):
 
 
 def test_hashline_edit_replaces_copied_line_rows(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     session_id = _create_session()
@@ -567,7 +567,7 @@ def test_hashline_edit_replaces_copied_line_rows(tmp_path, monkeypatch):
 
 
 def test_hashline_edit_deletes_when_no_replacement_lines(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     session_id = _create_session()
@@ -586,7 +586,7 @@ def test_hashline_edit_deletes_when_no_replacement_lines(tmp_path, monkeypatch):
 
 
 def test_hashline_edit_supports_swap_directive(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     session_id = _create_session()
@@ -605,7 +605,7 @@ def test_hashline_edit_supports_swap_directive(tmp_path, monkeypatch):
 
 
 def test_hashline_edit_supports_insert_directive(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
     session_id = _create_session()
@@ -626,7 +626,7 @@ def test_hashline_edit_supports_insert_directive(tmp_path, monkeypatch):
 def test_hashline_edit_accepts_workspace_relative_header_from_nested_session(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     project = tmp_path / "project"
     project.mkdir()
@@ -656,7 +656,7 @@ def test_hashline_edit_accepts_workspace_relative_header_from_nested_session(
 
 
 def test_hashline_edit_rejects_mismatched_old_text(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
     session_id = _create_session()
@@ -677,7 +677,7 @@ def test_parse_hashline_edit_rejects_non_consecutive_rows():
 
 
 def test_hashline_edit_supports_multiple_hunks_same_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text(
         "alpha\nbeta\ngamma\ndelta\n", encoding="utf-8"
@@ -711,7 +711,7 @@ def test_hashline_edit_supports_multiple_hunks_same_file(tmp_path, monkeypatch):
 def test_hashline_edit_supports_multiple_hunks_with_insert(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     session_id = _create_session()
@@ -738,7 +738,7 @@ def test_hashline_edit_supports_multiple_hunks_with_insert(
 
 
 def test_hashline_edit_supports_multiple_files(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "one.py").write_text("alpha\nbeta\n", encoding="utf-8")
     (tmp_path / "two.py").write_text("gamma\ndelta\n", encoding="utf-8")
@@ -767,7 +767,7 @@ def test_hashline_edit_supports_multiple_files(tmp_path, monkeypatch):
 
 
 def test_hashline_edit_rejects_overlapping_hunks(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     session_id = _create_session()

@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-import local_shell_mcp.ui.dashboard as dashboard_module
+import workgate.ui.dashboard as dashboard_module
 
 
 def test_dashboard_snapshot_exposes_metadata_only_and_failure_alert(

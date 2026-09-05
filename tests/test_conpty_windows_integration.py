@@ -5,9 +5,9 @@ import uuid
 
 import pytest
 
-import local_shell_mcp.terminal.conpty as conpty
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.terminal.runtime import build_terminal_runtime
+import workgate.terminal.conpty as conpty
+from workgate.config.settings import clear_settings_cache
+from workgate.terminal.runtime import build_terminal_runtime
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt" or not conpty.is_available(),
@@ -59,8 +59,8 @@ async def _wait_for_raw(
 async def test_real_windows_conpty_persistent_shell_and_raw_bridge(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     runtime = build_terminal_runtime()
     await runtime.start()

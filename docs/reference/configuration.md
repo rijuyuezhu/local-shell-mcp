@@ -7,7 +7,7 @@ Complete copy-editable examples are committed at the repository root as `.env.ex
 Settings resolve in this order:
 
 ```text
-defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments
+defaults < config file < WORKGATE_* environment variables < CLI arguments
 ```
 
 YAML config files use flat setting names such as `auth_mode` and `workspace_root`. Nested groups are not read by the application settings loader.

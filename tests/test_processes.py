@@ -1,4 +1,4 @@
-from local_shell_mcp.utils.processes import new_process_group_kwargs
+from workgate.utils.processes import new_process_group_kwargs
 
 
 def test_new_process_group_kwargs_uses_posix_session() -> None:

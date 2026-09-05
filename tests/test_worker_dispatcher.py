@@ -1,11 +1,11 @@
 import pytest
 
-from local_shell_mcp.remote.tool_specs import (
+from workgate.remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_HUMAN_UI,
     REMOTE_WORKER_TOOL_NAMES,
 )
-from local_shell_mcp.remote_worker.dispatch import (
+from workgate.remote_worker.dispatch import (
     WORKER_TOOL_NAMES,
     build_worker_dispatcher,
 )

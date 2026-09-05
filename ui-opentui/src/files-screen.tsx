@@ -21,7 +21,7 @@ import { screenTheme, theme } from "./theme"
 import type { FileEntry, FilePreview, FilesPayload, Machine } from "./types"
 
 const colors = screenTheme.Files
-const terminalCellAspect = parseTerminalCellAspect(process.env.LOCAL_SHELL_MCP_UI_CELL_ASPECT)
+const terminalCellAspect = parseTerminalCellAspect(process.env.WORKGATE_UI_CELL_ASPECT)
 
 type Dialog =
   | { type: "none" }

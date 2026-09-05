@@ -4,10 +4,10 @@ from typing import Annotated, Any, Literal
 
 import pytest
 
-import local_shell_mcp.config.settings as settings_module
-import local_shell_mcp.config.surface as surface
-from local_shell_mcp.config.settings import Settings, load_settings
-from local_shell_mcp.config.surface import (
+import workgate.config.settings as settings_module
+import workgate.config.surface as surface
+from workgate.config.settings import Settings, load_settings
+from workgate.config.surface import (
     SETTING_SPECS,
     SPECS_BY_NAME,
     SettingSpec,
@@ -20,16 +20,16 @@ class FakeField:
 
 
 def test_path_defaults_use_portable_posix_separators():
-    value = PureWindowsPath(r"\workspace\.local-shell-mcp")
+    value = PureWindowsPath(r"\workspace\.workgate")
 
-    assert surface.default_to_string(value) == "/workspace/.local-shell-mcp"
-    assert surface.yaml_default(value) == "/workspace/.local-shell-mcp"
+    assert surface.default_to_string(value) == "/workspace/.workgate"
+    assert surface.yaml_default(value) == "/workspace/.workgate"
 
 
 def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
     for spec in SETTING_SPECS:
         monkeypatch.delenv(spec.env_var, raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_CONFIG", raising=False)
+    monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
 
     settings = load_settings("config.example.yaml")
     defaults = Settings()

@@ -5,29 +5,29 @@ import hashlib
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.ui.http.remote_files as remote_files_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import (
+import workgate.ui.http.remote_files as remote_files_module
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import (
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_READ,
     SCOPE_SHELL_WRITE,
 )
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-from local_shell_mcp.remote.tool_specs import (
+from workgate.oauth.protocol.token_codec import issue_access_token
+from workgate.remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_HUMAN_UI,
 )
-from local_shell_mcp.schemas.result_models.remote import (
+from workgate.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
-from local_shell_mcp.ui.http.live_state import (
+from workgate.ui.http.live_state import (
     build_human_ui_runtime,
     configure_human_ui_runtime,
 )
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZP2sAAAAASUVORK5CYII="
 )
@@ -304,15 +304,15 @@ def _configure(
     auth_mode="none",
     max_file_read_bytes: int | None = None,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(workspace / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(workspace / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "true")
     if max_file_read_bytes is not None:
         monkeypatch.setenv(
-            "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES",
+            "WORKGATE_MAX_FILE_READ_BYTES",
             str(max_file_read_bytes),
         )
     clear_settings_cache()

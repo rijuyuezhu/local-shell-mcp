@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-import local_shell_mcp.agent_bridge.skills as skills
-from local_shell_mcp.agent_bridge.models import SkillRecord
-from local_shell_mcp.agent_bridge.registry import make_unique_tool_name
+import workgate.agent_bridge.skills as skills
+from workgate.agent_bridge.models import SkillRecord
+from workgate.agent_bridge.registry import make_unique_tool_name
 
 
 def _install_skill(

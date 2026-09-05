@@ -1,6 +1,6 @@
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
+from workgate.config.settings import clear_settings_cache
 
 
 def _reset_managed_deferred_sequence(job_recovery) -> None:
@@ -10,11 +10,9 @@ def _reset_managed_deferred_sequence(job_recovery) -> None:
 
 @pytest.fixture(autouse=True)
 def isolated_runtime_paths(monkeypatch, tmp_path):
-    state_dir = tmp_path / ".local-shell-mcp"
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
+    state_dir = tmp_path / ".workgate"
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(state_dir))
     clear_settings_cache()
     yield
     clear_settings_cache()
@@ -22,12 +20,12 @@ def isolated_runtime_paths(monkeypatch, tmp_path):
 
 @pytest.fixture
 async def managed_jobs_runtime_owner():
-    from local_shell_mcp.jobs import recovery as job_recovery
-    from local_shell_mcp.jobs.managed import (
+    from workgate.jobs import recovery as job_recovery
+    from workgate.jobs.managed import (
         ManagedJobsRuntime,
         configure_managed_jobs_runtime,
     )
-    from local_shell_mcp.ops.utils.session_copy import (
+    from workgate.ops.utils.session_copy import (
         session_copy_managed_job_registration,
     )
 

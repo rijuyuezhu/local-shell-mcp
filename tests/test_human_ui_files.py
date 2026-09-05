@@ -5,16 +5,16 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.ui.http.files as ui_files_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import (
+import workgate.ui.http.files as ui_files_module
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import (
     SCOPE_SHELL_READ,
     SCOPE_SHELL_WRITE,
 )
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
+from workgate.oauth.protocol.token_codec import issue_access_token
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZP2sAAAAASUVORK5CYII="
 )
@@ -38,20 +38,18 @@ def _configure(
     allow_full_control=False,
     **values,
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(workspace / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(workspace / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL",
+        "WORKGATE_ALLOW_FULL_CONTROL",
         str(allow_full_control).lower(),
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
     for name, value in values.items():
-        monkeypatch.setenv(
-            f"LOCAL_SHELL_MCP_{name.upper()}", str(value).lower()
-        )
+        monkeypatch.setenv(f"WORKGATE_{name.upper()}", str(value).lower())
     clear_settings_cache()
 
 
@@ -276,7 +274,7 @@ def test_editor_reads_complete_text_and_rejects_binary_or_truncated_files(
     assert "editor read limit" in large_response.json()["message"]
 
     clear_settings_cache()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "4096")
+    monkeypatch.setenv("WORKGATE_MAX_FILE_READ_BYTES", "4096")
     complete_client = TestClient(build_http_app(), base_url=BASE_URL)
     payload = complete_client.get(
         "/api/ui/files/content", params={"path": "complete.txt"}

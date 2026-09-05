@@ -6,14 +6,14 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-import local_shell_mcp.executors.mcp.app as mcp_app
-from local_shell_mcp.config.settings import Settings, configure_settings
-from local_shell_mcp.executors.mcp.session_limits import (
+import workgate.executors.mcp.app as mcp_app
+from workgate.config.settings import Settings, configure_settings
+from workgate.executors.mcp.session_limits import (
     McpSessionLimitMiddleware,
 )
-from local_shell_mcp.http.request_limits import RequestBodyLimitMiddleware
-from local_shell_mcp.oauth.http.middleware import AuthMiddleware
-from local_shell_mcp.ui.security import (
+from workgate.http.request_limits import RequestBodyLimitMiddleware
+from workgate.oauth.http.middleware import AuthMiddleware
+from workgate.ui.security import (
     UI_LOCAL_TOKEN_HEADER,
     get_or_create_ui_local_token,
 )
@@ -97,7 +97,7 @@ def test_mcp_http_app_serves_public_ui_and_native_tui_api(tmp_path):
     )
 
     assert page.status_code == 200
-    assert "local-shell-mcp" in page.text
+    assert "workgate" in page.text
     assert unauthenticated_api.status_code == 401
     assert native_api.status_code == 200
     assert native_api.json()["data"]["machines"][0]["name"] == "local"
@@ -314,7 +314,7 @@ def test_oauth_challenge_metadata_url_matches_rfc9728_path_resource():
             mode="mcp",
             auth_mode="oauth",
             remote_enabled=False,
-            base_url="https://local-shell-mcp.example.com",
+            base_url="https://workgate.example.com",
         )
     )
 
@@ -325,16 +325,14 @@ def test_oauth_challenge_metadata_url_matches_rfc9728_path_resource():
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == (
-        'Bearer resource_metadata="https://local-shell-mcp.example.com'
+        'Bearer resource_metadata="https://workgate.example.com'
         '/.well-known/oauth-protected-resource/mcp"'
     )
 
     metadata = client.get("/.well-known/oauth-protected-resource/mcp")
 
     assert metadata.status_code == 200
-    assert (
-        metadata.json()["resource"] == "https://local-shell-mcp.example.com/mcp"
-    )
+    assert metadata.json()["resource"] == "https://workgate.example.com/mcp"
 
     wrong_metadata = client.get("/.well-known/oauth-protected-resource/other")
 
@@ -355,7 +353,7 @@ def test_auth_middleware_uses_configured_public_route_matchers():
             mode="mcp",
             auth_mode="oauth",
             remote_enabled=False,
-            base_url="https://local-shell-mcp.example.com",
+            base_url="https://workgate.example.com",
         )
     )
     public_route = Route("/extra/{name}", _public_marker, methods=["GET"])

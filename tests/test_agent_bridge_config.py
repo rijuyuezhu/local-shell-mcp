@@ -2,15 +2,15 @@ import json
 
 import pytest
 
-from local_shell_mcp.agent_bridge.models import (
+from workgate.agent_bridge.models import (
     AgentBridgeManifest,
     AgentDynamicToolsConfig,
     AgentMcpServerConfig,
     AgentSecretReference,
 )
-from local_shell_mcp.agent_bridge.redaction import _redact_text, redact_mapping
-from local_shell_mcp.agent_bridge.state import load_agent_manifest
-from local_shell_mcp.config.settings import (
+from workgate.agent_bridge.redaction import _redact_text, redact_mapping
+from workgate.agent_bridge.state import load_agent_manifest
+from workgate.config.settings import (
     AGENT_AUTH_STATE_DIR_NAME,
     AGENT_CONFIG_STATE_DIR_NAME,
     AUDIT_LOG_STATE_DIR_NAME,
@@ -24,8 +24,8 @@ from local_shell_mcp.config.settings import (
 def test_workspace_root_does_not_rewrite_default_state_paths(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.delenv("LOCAL_SHELL_MCP_STATE_DIR", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.delenv("WORKGATE_STATE_DIR", raising=False)
     clear_settings_cache()
 
     settings = load_settings()
@@ -54,10 +54,8 @@ def test_dependent_state_paths_are_derived_from_custom_state_dir(
     monkeypatch, tmp_path
 ):
     state_dir = tmp_path / "custom-state"
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(state_dir))
     clear_settings_cache()
 
     settings = get_settings()

@@ -9,17 +9,17 @@ from typing import Any, cast
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.jobs import persistence as job_persistence
-from local_shell_mcp.jobs import runtime as jobs_runtime
-from local_shell_mcp.jobs import shell as jobs_shell
-from local_shell_mcp.ops import session as session_ops
-from local_shell_mcp.ops import shell as shell_ops
-from local_shell_mcp.ops.utils import remote_session as remote_session_ops
-from local_shell_mcp.remote_worker import dispatch as worker_dispatch
-from local_shell_mcp.terminal.runtime import build_terminal_runtime
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from local_shell_mcp.tools.registry import session as session_registry
+from workgate.config.settings import clear_settings_cache
+from workgate.jobs import persistence as job_persistence
+from workgate.jobs import runtime as jobs_runtime
+from workgate.jobs import shell as jobs_shell
+from workgate.ops import session as session_ops
+from workgate.ops import shell as shell_ops
+from workgate.ops.utils import remote_session as remote_session_ops
+from workgate.remote_worker import dispatch as worker_dispatch
+from workgate.terminal.runtime import build_terminal_runtime
+from workgate.tool_session.store import get_tool_session_store
+from workgate.tools.registry import session as session_registry
 
 
 def _load_job_store_untyped() -> dict[str, Any]:
@@ -33,7 +33,7 @@ def _start_peer_managed_job_lease(
     script = f"""
 import time
 from pathlib import Path
-from local_shell_mcp.utils.runtime_identity import ManagedJobLease
+from workgate.utils.runtime_identity import ManagedJobLease
 
 lease = ManagedJobLease({job_id!r})
 lease.acquire()
@@ -87,7 +87,7 @@ def test_git_output_detaches_child_stdin(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_local_session_start_offloads_orientation(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     get_tool_session_store().clear()
     calls = []
@@ -115,9 +115,9 @@ async def test_local_session_start_offloads_orientation(tmp_path, monkeypatch):
 async def test_session_start_reconciles_stale_shell_job_before_capacity_check(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -168,7 +168,7 @@ async def test_session_start_rejects_unknown_target():
 async def test_remote_session_start_releases_worker_when_admission_fails(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -176,7 +176,7 @@ async def test_remote_session_start_releases_worker_when_admission_fails(
         store.create_session(workdir=tmp_path)
     ).model_copy(update={"session_id": "WORKER12", "workdir": "/remote/work"})
     store.clear()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     store.create_session(workdir=tmp_path)
     released: list[tuple[str, str]] = []
@@ -249,7 +249,7 @@ async def test_session_change_cwd_refreshes_environment_git_and_instructions(
     first.mkdir()
     second.mkdir()
     (second / "AGENTS.md").write_text("instructions\n", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     get_tool_session_store().clear()
 
@@ -286,7 +286,7 @@ async def test_local_session_change_cwd_excludes_concurrent_teardown(
     second = tmp_path / "second"
     first.mkdir()
     second.mkdir()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -335,7 +335,7 @@ async def test_local_session_change_cwd_excludes_concurrent_teardown(
 async def test_remote_session_change_cwd_excludes_concurrent_teardown(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -399,7 +399,7 @@ async def test_remote_session_change_cwd_excludes_concurrent_teardown(
 async def test_session_end_stops_jobs_before_removing_local_state(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -436,7 +436,7 @@ async def test_session_end_stops_jobs_before_removing_local_state(
 async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -466,8 +466,8 @@ async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
 async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
     tmp_path, monkeypatch, managed_jobs_runtime_owner
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -536,8 +536,8 @@ async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
 async def test_destination_teardown_migrates_legacy_managed_copy(
     tmp_path, monkeypatch, managed_jobs_runtime_owner
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -584,7 +584,7 @@ async def test_destination_teardown_migrates_legacy_managed_copy(
 async def test_session_end_retry_rechecks_lost_job_before_deleting_session(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -613,13 +613,13 @@ async def test_session_end_retry_rechecks_lost_job_before_deleting_session(
         return []
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime._job_list_execute_unlocked", fake_list
+        "workgate.jobs.runtime._job_list_execute_unlocked", fake_list
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime._job_stop_execute_unlocked", fake_stop
+        "workgate.jobs.runtime._job_stop_execute_unlocked", fake_stop
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
+        "workgate.jobs.runtime.job_stop_managed_references_execute",
         fake_stop_references,
     )
     monkeypatch.setattr(session_ops, "_stop_owned_shells", no_shells)
@@ -670,13 +670,13 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         return ["target-copy"]
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime._job_list_execute_unlocked", fake_list
+        "workgate.jobs.runtime._job_list_execute_unlocked", fake_list
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime._job_stop_execute_unlocked", fake_stop
+        "workgate.jobs.runtime._job_stop_execute_unlocked", fake_stop
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
+        "workgate.jobs.runtime.job_stop_managed_references_execute",
         fake_stop_references,
     )
 
@@ -691,8 +691,8 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
 async def test_stop_owned_jobs_consumes_durable_completion_without_inventory(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -767,13 +767,13 @@ async def test_stop_owned_jobs_rejects_unconfirmed_stop(status, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime._job_list_execute_unlocked", fake_list
+        "workgate.jobs.runtime._job_list_execute_unlocked", fake_list
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime._job_stop_execute_unlocked", fake_stop
+        "workgate.jobs.runtime._job_stop_execute_unlocked", fake_stop
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
+        "workgate.jobs.runtime.job_stop_managed_references_execute",
         unexpected_references,
     )
 
@@ -790,11 +790,11 @@ async def test_stop_owned_shells_rejects_unknown_owner_inventory(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.list_persistent_shells_execute",
+        "workgate.ops.shell.list_persistent_shells_execute",
         fake_inventory,
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        "workgate.ops.shell.list_owned_persistent_shell_ids_execute",
         uncertain_owned,
     )
     monkeypatch.setattr(
@@ -815,8 +815,8 @@ async def test_stop_owned_shells_rejects_unknown_owner_inventory(monkeypatch):
 async def test_session_end_preserves_peer_owned_conpty_shell(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -874,8 +874,8 @@ async def test_session_end_retries_unconfirmed_conpty_termination(
             self.alive = False
             self.exitstatus = 0
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -944,11 +944,11 @@ async def test_stop_owned_shells_kills_only_matching_owner(monkeypatch):
         return SimpleNamespace(killed=True)
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        "workgate.ops.shell.list_owned_persistent_shell_ids_execute",
         fake_list,
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+        "workgate.ops.shell.kill_persistent_shell_execute", fake_kill
     )
     monkeypatch.setattr(
         session_ops,
@@ -980,14 +980,14 @@ async def test_stop_owned_shells_accepts_shell_that_exits_during_kill(
         return set()
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        "workgate.ops.shell.list_owned_persistent_shell_ids_execute",
         fake_list,
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+        "workgate.ops.shell.kill_persistent_shell_execute", fake_kill
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.authoritative_persistent_shell_ids_execute",
+        "workgate.ops.shell.authoritative_persistent_shell_ids_execute",
         authoritative_inventory,
     )
     monkeypatch.setattr(
@@ -1016,14 +1016,14 @@ async def test_stop_owned_shells_rejects_unconfirmed_failed_kill(
         return active_shell_ids
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        "workgate.ops.shell.list_owned_persistent_shell_ids_execute",
         fake_list,
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+        "workgate.ops.shell.kill_persistent_shell_execute", fake_kill
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.authoritative_persistent_shell_ids_execute",
+        "workgate.ops.shell.authoritative_persistent_shell_ids_execute",
         authoritative_inventory,
     )
     monkeypatch.setattr(
@@ -1051,11 +1051,11 @@ async def test_stop_owned_shells_does_not_kill_reused_unowned_name(monkeypatch):
         raise AssertionError("an unowned reused shell must not be killed")
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        "workgate.ops.shell.list_owned_persistent_shell_ids_execute",
         no_owned_shells,
     )
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell.kill_persistent_shell_execute",
+        "workgate.ops.shell.kill_persistent_shell_execute",
         unexpected_kill,
     )
     monkeypatch.setattr(
@@ -1116,7 +1116,7 @@ async def test_session_end_waits_for_in_flight_job_admission(monkeypatch):
 async def test_remote_session_end_removes_worker_before_controller_state(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -1141,7 +1141,7 @@ async def test_remote_session_end_removes_worker_before_controller_state(
 
     monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.remote_session.call_remote_session_tool",
+        "workgate.ops.utils.remote_session.call_remote_session_tool",
         fake_remote_call,
     )
 
@@ -1160,7 +1160,7 @@ async def test_remote_session_end_removes_worker_before_controller_state(
 async def test_expired_remote_session_end_can_still_release_worker_binding(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -1181,7 +1181,7 @@ async def test_expired_remote_session_end_can_still_release_worker_binding(
         return []
 
     async def fake_remote_call(remote_session, tool, args):
-        from local_shell_mcp.tool_session.bindings import RemoteSessionBinding
+        from workgate.tool_session.bindings import RemoteSessionBinding
 
         assert isinstance(remote_session, RemoteSessionBinding)
         calls.append(remote_session.worker_session_id)
@@ -1191,7 +1191,7 @@ async def test_expired_remote_session_end_can_still_release_worker_binding(
 
     monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.remote_session.call_remote_session_tool",
+        "workgate.ops.utils.remote_session.call_remote_session_tool",
         fake_remote_call,
     )
 
@@ -1207,8 +1207,8 @@ async def test_expired_remote_session_end_can_still_release_worker_binding(
 async def test_remote_session_force_release_survives_worker_failure(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -1227,7 +1227,7 @@ async def test_remote_session_force_release_survives_worker_failure(
 
     monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.remote_session.call_remote_session_tool",
+        "workgate.ops.utils.remote_session.call_remote_session_tool",
         failing_remote_call,
     )
 

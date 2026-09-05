@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from local_shell_mcp.config.settings import get_settings
-from local_shell_mcp.jobs import runtime as jobs_ops
-from local_shell_mcp.jobs.managed import ManagedJobsRuntime
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.config.settings import get_settings
+from workgate.jobs import runtime as jobs_ops
+from workgate.jobs.managed import ManagedJobsRuntime
+from workgate.tool_session.store import get_tool_session_store
 
 
 def test_managed_jobs_handler_registration_is_owner_scoped() -> None:

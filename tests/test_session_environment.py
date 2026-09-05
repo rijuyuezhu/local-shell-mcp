@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from local_shell_mcp.config.settings import Settings
-from local_shell_mcp.schemas.result_models.session import SessionToolProbe
-from local_shell_mcp.tool_session import environment as env_ops
+from workgate.config.settings import Settings
+from workgate.schemas.result_models.session import SessionToolProbe
+from workgate.tool_session import environment as env_ops
 
 
 def _settings(tmp_path: Path, **updates) -> Settings:
@@ -288,7 +288,7 @@ def test_agent_oauth_counts_reflect_private_authorization_without_names(
 ):
     from mcp.shared.auth import OAuthToken
 
-    from local_shell_mcp.agent_bridge.auth_store import AgentAuthStore
+    from workgate.agent_bridge.auth_store import AgentAuthStore
 
     monkeypatch.delenv(env_ops._REMOTE_WORKER_RUNTIME_ENV, raising=False)
     monkeypatch.delenv(env_ops._WORKER_MANAGED_ENV, raising=False)

@@ -5,22 +5,22 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-import local_shell_mcp.executors.http.app as http_app
-import local_shell_mcp.executors.mcp.app as mcp_app
-from local_shell_mcp.config.settings import Settings, configure_settings
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import build_mcp, build_mcp_http_app
-from local_shell_mcp.executors.runtime import build_controller_runtime
-from local_shell_mcp.persistence import (
+import workgate.executors.http.app as http_app
+import workgate.executors.mcp.app as mcp_app
+from workgate.config.settings import Settings, configure_settings
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import build_mcp, build_mcp_http_app
+from workgate.executors.runtime import build_controller_runtime
+from workgate.persistence import (
     FileStateStore,
     configure_state_store,
     get_state_store,
 )
-from local_shell_mcp.tool_session import (
+from workgate.tool_session import (
     configure_tool_session_store,
     get_tool_session_store,
 )
-from local_shell_mcp.tool_session.store import ToolSessionStore
+from workgate.tool_session.store import ToolSessionStore
 
 
 def _install_outer_stores(settings: Settings):

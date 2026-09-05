@@ -4,10 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import build_mcp
 from tests.helpers import mcp_text
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import build_mcp
 
 
 def _audit_records(path):
@@ -38,9 +38,9 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
     tmp_path, monkeypatch
 ):
     (tmp_path / "alpha.txt").write_text("hello", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -70,9 +70,9 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
 @pytest.mark.asyncio
 async def test_mcp_tool_calls_audit_full_input_output(tmp_path, monkeypatch):
     (tmp_path / "beta.txt").write_text("world", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     session = json.loads(
@@ -102,9 +102,9 @@ async def test_mcp_tool_calls_audit_full_input_output(tmp_path, monkeypatch):
 async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     session = json.loads(

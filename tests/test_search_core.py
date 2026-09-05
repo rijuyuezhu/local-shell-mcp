@@ -1,7 +1,7 @@
 from dataclasses import fields
 from pathlib import Path
 
-from local_shell_mcp.ops.search.core import (
+from workgate.ops.search.core import (
     ParsedSearchMatch,
     SearchConfig,
     SearchDisplayWindow,

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.ops.patch.envelope import normalize_patch_text
+from workgate.ops.patch.envelope import normalize_patch_text
 
 
 def _git_apply(root: Path, patch: str) -> None:

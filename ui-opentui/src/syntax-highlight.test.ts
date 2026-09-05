@@ -7,12 +7,12 @@ function rendered(tokens: ReturnType<typeof tokenizeHighlightedText>): string {
 
 describe("syntax highlighting", () => {
   test("distinguishes JSON keys from scalar values without changing content", () => {
-    const source = '{\n  "name": "lsm",\n  "count": 3,\n  "ok": true\n}'
+    const source = '{\n  "name": "workgate",\n  "count": 3,\n  "ok": true\n}'
     const tokens = tokenizeJson(source)
 
     expect(rendered(tokens)).toBe(source)
     expect(tokens.some((token) => token.kind === "key" && token.text === '"name"')).toBe(true)
-    expect(tokens.some((token) => token.kind === "string" && token.text === '"lsm"')).toBe(true)
+    expect(tokens.some((token) => token.kind === "string" && token.text === '"workgate"')).toBe(true)
     expect(tokens.some((token) => token.kind === "number" && token.text === "3")).toBe(true)
     expect(tokens.some((token) => token.kind === "literal" && token.text === "true")).toBe(true)
   })
@@ -26,7 +26,7 @@ describe("syntax highlighting", () => {
 
   test("preserves source text for code and config previews", () => {
     const code = "const answer = 42 // result\n"
-    const config = "enabled: true\nname: lsm\n"
+    const config = "enabled: true\nname: workgate\n"
 
     expect(rendered(tokenizeHighlightedText(code, "main.ts"))).toBe(code)
     expect(rendered(tokenizeHighlightedText(config, "config.yaml"))).toBe(config)

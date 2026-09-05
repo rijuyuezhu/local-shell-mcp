@@ -2,29 +2,29 @@ import shutil
 
 import pytest
 
-from local_shell_mcp import persistence
-from local_shell_mcp.config import settings as settings_module
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.ops.search import service as search_service_module
-from local_shell_mcp.ops.search.composition import (
+from workgate import persistence
+from workgate.config import settings as settings_module
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.ops.search import service as search_service_module
+from workgate.ops.search.composition import (
     build_local_search_runner,
     build_search_service,
 )
-from local_shell_mcp.ops.search.service import RemoteSearchClient, SearchRequest
-from local_shell_mcp.schemas.result_models.search import (
+from workgate.ops.search.service import RemoteSearchClient, SearchRequest
+from workgate.schemas.result_models.search import (
     GrepMatch,
     GrepSearchOutput,
 )
-from local_shell_mcp.tool_session import store as store_module
-from local_shell_mcp.tool_session.bindings import (
+from workgate.tool_session import store as store_module
+from workgate.tool_session.bindings import (
     LocalSessionBinding,
     RemoteSessionBinding,
 )
 
 
 def _store_and_settings(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     settings = get_settings()
     store = store_module.ToolSessionStore(

@@ -12,12 +12,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.executors.mcp.instructions import SERVER_INSTRUCTIONS
-from local_shell_mcp.tools.catalog import build_tool_catalog
-from local_shell_mcp.tools.declarative import DeclarativeToolRegistry
-from local_shell_mcp.utils.serialization import to_jsonable
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.executors.mcp.instructions import SERVER_INSTRUCTIONS
+from workgate.tools.catalog import build_tool_catalog
+from workgate.tools.declarative import DeclarativeToolRegistry
+from workgate.utils.serialization import to_jsonable
 
 
 def _tool_to_jsonable_dict(tool: Any) -> dict[str, Any]:
@@ -32,14 +32,12 @@ def _tool_to_jsonable_dict(tool: Any) -> dict[str, Any]:
 
 async def export_tools() -> list[dict[str, Any]]:
     """Build the MCP app and return the tools it exposes to clients."""
-    with tempfile.TemporaryDirectory(prefix="local-shell-mcp-tools-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="workgate-tools-") as tmp:
         tmp_root = Path(tmp)
         os.environ.setdefault(
-            "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_root / "workspace")
+            "WORKGATE_WORKSPACE_ROOT", str(tmp_root / "workspace")
         )
-        os.environ.setdefault(
-            "LOCAL_SHELL_MCP_STATE_DIR", str(tmp_root / "state")
-        )
+        os.environ.setdefault("WORKGATE_STATE_DIR", str(tmp_root / "state"))
         clear_settings_cache()
         tools = await build_mcp().list_tools()
     return [_tool_to_jsonable_dict(tool) for tool in tools]

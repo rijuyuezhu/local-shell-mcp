@@ -6,9 +6,7 @@ from pathlib import Path
 from runpy import run_path
 
 REPO = Path(__file__).resolve().parents[2]
-_TUI_CONTRACT = run_path(
-    str(REPO / "src" / "local_shell_mcp" / "ui" / "contracts.py")
-)
+_TUI_CONTRACT = run_path(str(REPO / "src" / "workgate" / "ui" / "contracts.py"))
 POSIX_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["POSIX_TUI_EXECUTABLE_NAME"])
 WINDOWS_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["WINDOWS_TUI_EXECUTABLE_NAME"])
 CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
@@ -129,8 +127,8 @@ def _platform_wheel_fragments() -> tuple[str, ...]:
         '--platform-tag "${{ matrix.platform_tag }}"',
         "scripts/release/smoke-platform-wheel.py",
         'PATH="$clean_path"',
-        "test ! -e src/local_shell_mcp/ui_runtime",
-        "test ! -e src/local_shell_mcp/.platform-wheel-build.lock",
+        "test ! -e src/workgate/ui_runtime",
+        "test ! -e src/workgate/.platform-wheel-build.lock",
     )
 
 
@@ -208,11 +206,11 @@ def main() -> int:
             "scripts/validation/check-native-provenance.py",
             "scripts/generation/generate-tui-executable-contract.py",
             "tests/test_native_provenance.py",
-            "src/local_shell_mcp/ui/contracts.py",
+            "src/workgate/ui/contracts.py",
             "ui-opentui/scripts/executable-contract.ts",
             'generate-tui-executable-contract.py" --check',
-            "src/local_shell_mcp/helpers/opentui.NOTICES",
-            "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
+            "src/workgate/helpers/opentui.NOTICES",
+            "src/workgate/helpers/bun-1.3.14.LICENSE.md",
         ),
     )
     universal_package_status = _require_fragments(

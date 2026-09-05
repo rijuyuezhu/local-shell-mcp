@@ -46,9 +46,9 @@ function versionFrom(payload: DashboardPayload | null): string {
 
 function machineVersion(machine: Machine): string {
   const info = machine.info || {}
-  const direct = info.version || info.lsm_version
+  const direct = info.version || info.workgate_version
   if (direct) return String(direct)
-  const nested = info.local_shell_mcp
+  const nested = info.workgate
   if (nested && typeof nested === "object" && "version" in nested) {
     return String((nested as Record<string, unknown>).version || "—")
   }
@@ -466,7 +466,7 @@ function RecentActivity({ activity, width, rows }: { activity: DashboardActivity
 
 function QuickSystemInfo({ payload, width }: { payload: DashboardPayload; width: number }) {
   const data = [
-    ["LSM", versionFrom(payload)],
+    ["Workgate", versionFrom(payload)],
     ["Platform", String(payload.version.platform || "—")],
     ["Python", String(payload.version.python || "—")],
     ["CPUs", String(payload.system.cpu_count || "—")],
@@ -481,7 +481,7 @@ function QuickSystemInfo({ payload, width }: { payload: DashboardPayload; width:
       {data.map(([label, value]) => (
         <box key={label} style={{ height: 1, flexDirection: "row" }}>
           <text fg={theme.faint} content={`${label.padEnd(11)} `} />
-          <text fg={label === "LSM" ? theme.green : theme.muted} content={truncate(value, Math.max(6, width - 14))} />
+          <text fg={label === "Workgate" ? theme.green : theme.muted} content={truncate(value, Math.max(6, width - 14))} />
         </box>
       ))}
     </Panel>

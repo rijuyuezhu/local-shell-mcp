@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.audit.payloads as payloads
-from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
-from local_shell_mcp.config.settings import Settings
+import workgate.audit.payloads as payloads
+from workgate.audit.payloads import AUDIT_PAYLOAD_KEY
+from workgate.config.settings import Settings
 
 
 def _settings(tmp_path: Path, **overrides: Any) -> Settings:
@@ -92,7 +92,7 @@ def test_externalize_handles_compressed_object_limit_and_directory_collision(
         preview="preview",
         created_at=1.0,
     )
-    assert omitted["$local_shell_mcp_audit_truncated"]["reason"] == (
+    assert omitted["$workgate_audit_truncated"]["reason"] == (
         "payload_store_object_limit"
     )
 
@@ -108,7 +108,7 @@ def test_externalize_handles_compressed_object_limit_and_directory_collision(
         preview="preview",
         created_at=1.0,
     )
-    assert failed["$local_shell_mcp_audit_truncated"]["reason"] == (
+    assert failed["$workgate_audit_truncated"]["reason"] == (
         "payload_store_error"
     )
 

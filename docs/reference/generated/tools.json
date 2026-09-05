@@ -6904,18 +6904,13 @@
                 "title": "Architecture",
                 "type": "string"
               },
-              "local_shell_mcp_version": {
-                "description": "Running local-shell-mcp source version.",
-                "title": "Local Shell Mcp Version",
-                "type": "string"
-              },
               "os": {
                 "description": "Normalized operating-system family.",
                 "title": "Os",
                 "type": "string"
               },
               "package_version": {
-                "description": "Installed local-shell-mcp distribution version.",
+                "description": "Installed workgate distribution version.",
                 "title": "Package Version",
                 "type": "string"
               },
@@ -6951,10 +6946,15 @@
                 ],
                 "title": "Runtime Kind",
                 "type": "string"
+              },
+              "workgate_version": {
+                "description": "Running workgate source version.",
+                "title": "Workgate Version",
+                "type": "string"
               }
             },
             "required": [
-              "local_shell_mcp_version",
+              "workgate_version",
               "package_version",
               "python_implementation",
               "python_version",
@@ -7129,7 +7129,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Remote worker local-shell-mcp version, when active.",
+                "description": "Remote worker workgate version, when active.",
                 "title": "Worker Version"
               }
             },
@@ -8370,18 +8370,13 @@
                 "title": "Architecture",
                 "type": "string"
               },
-              "local_shell_mcp_version": {
-                "description": "Running local-shell-mcp source version.",
-                "title": "Local Shell Mcp Version",
-                "type": "string"
-              },
               "os": {
                 "description": "Normalized operating-system family.",
                 "title": "Os",
                 "type": "string"
               },
               "package_version": {
-                "description": "Installed local-shell-mcp distribution version.",
+                "description": "Installed workgate distribution version.",
                 "title": "Package Version",
                 "type": "string"
               },
@@ -8417,10 +8412,15 @@
                 ],
                 "title": "Runtime Kind",
                 "type": "string"
+              },
+              "workgate_version": {
+                "description": "Running workgate source version.",
+                "title": "Workgate Version",
+                "type": "string"
               }
             },
             "required": [
-              "local_shell_mcp_version",
+              "workgate_version",
               "package_version",
               "python_implementation",
               "python_version",
@@ -8595,7 +8595,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Remote worker local-shell-mcp version, when active.",
+                "description": "Remote worker workgate version, when active.",
                 "title": "Worker Version"
               }
             },

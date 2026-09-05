@@ -1,9 +1,9 @@
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.tool_session.selectors import parse_read_target
 from tests.helpers import mcp_structured
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.tool_session.selectors import parse_read_target
 
 
 def test_parse_read_target_rejects_missing_plus_count():
@@ -15,8 +15,8 @@ def test_parse_read_target_rejects_missing_plus_count():
 async def test_read_facade_reads_line_selector_with_numbered_content(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     (tmp_path / "demo.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
 
@@ -42,8 +42,8 @@ async def test_read_facade_reads_line_selector_with_numbered_content(
 async def test_read_facade_reads_multi_range_selector_with_grounding(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     (tmp_path / "demo.py").write_text(
         "alpha\nbeta\ngamma\ndelta\nepsilon\n", encoding="utf-8"
@@ -76,8 +76,8 @@ async def test_read_facade_reads_multi_range_selector_with_grounding(
 async def test_read_facade_raw_multi_range_selector_returns_unnumbered_content(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     (tmp_path / "demo.py").write_text(
         "alpha\nbeta\ngamma\ndelta\n", encoding="utf-8"
@@ -105,8 +105,8 @@ async def test_read_facade_raw_multi_range_selector_returns_unnumbered_content(
 async def test_read_facade_raw_selector_returns_unnumbered_content(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     (tmp_path / "demo.py").write_bytes(b"alpha\nbeta\n")
 
@@ -129,8 +129,8 @@ async def test_read_facade_raw_selector_returns_unnumbered_content(
 
 @pytest.mark.asyncio
 async def test_read_facade_lists_directories(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "demo.py").write_text("", encoding="utf-8")

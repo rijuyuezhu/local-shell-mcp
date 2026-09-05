@@ -7,7 +7,7 @@ The safest workflow is: choose a workspace, inspect it, make a small change, and
 Ask the client to start a session in the project directory before doing any work:
 
 ```text
-Use local-shell-mcp in /path/to/project. Start a session, inspect the returned workspace and Git state, and read any instruction files before changing anything.
+Use workgate in /path/to/project. Start a session, inspect the returned workspace and Git state, and read any instruction files before changing anything.
 ```
 
 Keep using the returned `session_id`. Use `session_change_cwd` when the task moves to another directory instead of starting unrelated operations from an assumed path.

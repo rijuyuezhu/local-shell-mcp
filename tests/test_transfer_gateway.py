@@ -10,23 +10,23 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.http.request_limits import (
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.http.request_limits import (
     RequestBodyLimitMiddleware,
 )
-from local_shell_mcp.ops.transfer import (
+from workgate.ops.transfer import (
     transfer_begin_write,
     transfer_finish_write,
     transfer_write_bytes,
 )
-from local_shell_mcp.remote import transfer_gateway as gateway_module
-from local_shell_mcp.remote.transfer_gateway import (
+from workgate.remote import transfer_gateway as gateway_module
+from workgate.remote.transfer_gateway import (
     TransferGatewayError,
     TransferGatewayStore,
     TransferGrant,
     build_transfer_gateway_router,
 )
-from local_shell_mcp.remote_worker.http_transfer import (
+from workgate.remote_worker.http_transfer import (
     WorkerHTTPTransferError,
     _validate_url,
 )
@@ -39,8 +39,8 @@ def _client() -> TestClient:
 def _headers(grant: TransferGrant) -> dict[str, str]:
     return {
         "Authorization": grant.authorization,
-        "X-Local-Shell-MCP-Worker": grant.worker,
-        "X-Local-Shell-MCP-Transfer-Direction": grant.direction,
+        "X-Workgate-Worker": grant.worker,
+        "X-Workgate-Transfer-Direction": grant.direction,
     }
 
 
@@ -112,7 +112,7 @@ def test_upload_resume_replay_download_and_worker_binding() -> None:
         assert missing.status_code == 401
 
         wrong_worker_headers = _headers(upload)
-        wrong_worker_headers["X-Local-Shell-MCP-Worker"] = "other-worker"
+        wrong_worker_headers["X-Workgate-Worker"] = "other-worker"
         wrong_worker = client.head(upload.url, headers=wrong_worker_headers)
         assert wrong_worker.status_code == 401
 
@@ -291,13 +291,9 @@ def test_rejects_expired_grant_bad_ranges_and_digest_mismatch() -> None:
 
 
 def test_quota_resume_metadata_and_traversal_are_rejected(monkeypatch) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE", "1")
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES", "16"
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES", "1"
-    )
+    monkeypatch.setenv("WORKGATE_REMOTE_HTTP_TRANSFER_MAX_ACTIVE", "1")
+    monkeypatch.setenv("WORKGATE_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES", "16")
+    monkeypatch.setenv("WORKGATE_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES", "1")
     clear_settings_cache()
     store = TransferGatewayStore(get_settings())
     payload = b"12345678"
@@ -580,13 +576,9 @@ def test_store_rejects_corrupt_metadata_and_invalid_prepare_values() -> None:
 def test_store_cleanup_quota_and_resume_spool_integrity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE", "10")
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES", "8"
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES", "1"
-    )
+    monkeypatch.setenv("WORKGATE_REMOTE_HTTP_TRANSFER_MAX_ACTIVE", "10")
+    monkeypatch.setenv("WORKGATE_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES", "8")
+    monkeypatch.setenv("WORKGATE_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES", "1")
     clear_settings_cache()
     store = TransferGatewayStore(get_settings())
     payload = b"12345678"
@@ -795,7 +787,7 @@ def test_gateway_route_malformed_headers_and_range_errors() -> None:
     store, upload, download = _prepare_upload(payload)
     with _client() as client:
         invalid_direction = _headers(upload)
-        invalid_direction["X-Local-Shell-MCP-Transfer-Direction"] = "sideways"
+        invalid_direction["X-Workgate-Transfer-Direction"] = "sideways"
         assert (
             client.head(upload.url, headers=invalid_direction).status_code
             == 422
@@ -934,7 +926,7 @@ def test_private_chunk_reader_iterator_and_local_transaction_cleanup(
         identity_b=source_identity[1],
         identity_c=source_identity[2],
     )
-    from local_shell_mcp.ops import transfer as transfer_module
+    from workgate.ops import transfer as transfer_module
 
     real_abort = transfer_module.transfer_abort_write
     aborted: list[str] = []

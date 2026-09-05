@@ -1,6 +1,6 @@
 # Audit log
 
-`local-shell-mcp` records server and tool activity so users can review what happened. Audit data may include project text, command input, command output, errors, and remote activity after best-effort credential redaction.
+`workgate` records server and tool activity so users can review what happened. Audit data may include project text, command input, command output, errors, and remote activity after best-effort credential redaction.
 
 Treat the entire audit directory as sensitive.
 
@@ -17,10 +17,10 @@ To retrieve a retained full sanitized value, request one specific entry with `in
 By default, local audit state is under:
 
 ```text
-/workspace/.local-shell-mcp/audit_log/
+/workspace/.workgate/audit_log/
 ```
 
-The location follows `LOCAL_SHELL_MCP_STATE_DIR`. A remote worker keeps its own audit history, which is selected through the same session-oriented UI and tool flow.
+The location follows `WORKGATE_STATE_DIR`. A remote worker keeps its own audit history, which is selected through the same session-oriented UI and tool flow.
 
 Do not publish this directory, attach it to public bug reports, or assume redaction removed every sensitive project value.
 

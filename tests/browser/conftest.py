@@ -14,13 +14,13 @@ def browser_harness(
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ) -> Iterator[BrowserHarness]:
-    if os.environ.get("LOCAL_SHELL_MCP_BROWSER_E2E") != "1":
+    if os.environ.get("WORKGATE_BROWSER_E2E") != "1":
         pytest.skip(
             "real Chromium E2E is enabled by the dedicated browser launcher"
         )
 
     artifacts_root = Path(
-        os.environ.get("LOCAL_SHELL_MCP_BROWSER_ARTIFACTS", "browser-artifacts")
+        os.environ.get("WORKGATE_BROWSER_ARTIFACTS", "browser-artifacts")
     ).resolve()
     test_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", request.node.nodeid).strip("-")
     artifacts = artifacts_root / test_name

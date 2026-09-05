@@ -1,10 +1,10 @@
-# local-shell-mcp
+# Workgate
 
-`local-shell-mcp` gives MCP clients controlled shell, filesystem, Git, remote-worker, and related development tools.
+Workgate is a self-hosted workspace control plane for coding agents. It gives MCP clients controlled shell, filesystem, Git, remote-worker, and related development tools.
 
 ## Documentation
 
-https://project.rijuyuezhu.top/local-shell-mcp/
+https://project.rijuyuezhu.top/workgate/
 
 ## License
 

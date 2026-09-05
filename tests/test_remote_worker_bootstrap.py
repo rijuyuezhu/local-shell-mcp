@@ -14,7 +14,7 @@ import pytest
 
 
 def _managed_runtime_report() -> dict[str, object]:
-    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+    from workgate.remote.bundle import worker_bundle_manifest
 
     manifest = worker_bundle_manifest()
     return {
@@ -43,7 +43,7 @@ def _managed_poll_report(**extra: object) -> dict[str, object]:
 def test_reconnect_metadata_ignores_non_string_fields(
     info: dict[str, object],
 ) -> None:
-    from local_shell_mcp.remote.manager import _worker_reconnect_metadata
+    from workgate.remote.manager import _worker_reconnect_metadata
 
     assert _worker_reconnect_metadata(info) == (None, None)
 
@@ -65,14 +65,14 @@ def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 
 builtins.__import__ = guarded_import
-import local_shell_mcp.remote_worker
-from local_shell_mcp.remote_worker.dispatch import build_worker_dispatcher
-from local_shell_mcp.remote_worker.worker import worker_capabilities, worker_info
+import workgate.remote_worker
+from workgate.remote_worker.dispatch import build_worker_dispatcher
+from workgate.remote_worker.worker import worker_capabilities, worker_info
 
 assert "shell" in worker_capabilities()
 assert "search" in build_worker_dispatcher().handlers
 assert worker_info(".")["workdir"] == "."
-assert worker_info(".")["lsm_version"]
+assert worker_info(".")["workgate_version"]
 """
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -88,7 +88,7 @@ assert worker_info(".")["lsm_version"]
 def test_source_only_worker_cli_exposes_new_subcommands(tmp_path):
     source_root = Path(__file__).resolve().parents[1] / "src"
     completed = subprocess.run(
-        [sys.executable, "-m", "local_shell_mcp.remote_worker", "--help"],
+        [sys.executable, "-m", "workgate.remote_worker", "--help"],
         cwd=tmp_path,
         env={
             **os.environ,
@@ -120,7 +120,7 @@ def test_source_only_worker_cli_exposes_new_subcommands(tmp_path):
 
 
 def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     real_import = builtins.__import__
     seen_mcp_import = False
@@ -139,8 +139,8 @@ def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_dispatches_persistent_shell_resize(monkeypatch):
-    from local_shell_mcp.ops import shell as shell_ops
-    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+    from workgate.ops import shell as shell_ops
+    from workgate.remote_worker.dispatch import execute_worker_tool
 
     calls = []
 
@@ -169,8 +169,8 @@ async def test_worker_dispatches_persistent_shell_resize(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_dispatches_persistent_shell_read_with_ansi(monkeypatch):
-    from local_shell_mcp.ops import shell as shell_ops
-    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+    from workgate.ops import shell as shell_ops
+    from workgate.remote_worker.dispatch import execute_worker_tool
 
     calls = []
 
@@ -210,8 +210,8 @@ async def test_worker_dispatches_persistent_shell_read_with_ansi(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_dispatches_persistent_shell_start(monkeypatch):
-    from local_shell_mcp.ops import shell as shell_ops
-    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+    from workgate.ops import shell as shell_ops
+    from workgate.remote_worker.dispatch import execute_worker_tool
 
     calls = []
 
@@ -237,8 +237,8 @@ async def test_worker_dispatches_persistent_shell_start(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_dispatches_terminal_bridge_lifecycle(monkeypatch):
-    import local_shell_mcp.terminal.bridge as bridge_ops
-    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+    import workgate.terminal.bridge as bridge_ops
+    from workgate.remote_worker.dispatch import execute_worker_tool
 
     calls = []
     bridge_id = "bridge_capability_1234567890"
@@ -324,12 +324,12 @@ import asyncio
 import json
 import os
 
-from local_shell_mcp.remote_worker.compat import install
+from workgate.remote_worker.compat import install
 
 install()
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.remote_worker import worker
+from workgate.config.settings import clear_settings_cache
+from workgate.remote_worker import worker
 
 
 async def main():
@@ -356,9 +356,9 @@ asyncio.run(main())
         {
             "PYTHONPATH": "src",
             "REMOTE_WORKDIR": str(tmp_path),
-            "LOCAL_SHELL_MCP_WORKSPACE_ROOT": "/workspace",
-            "LOCAL_SHELL_MCP_STATE_DIR": "/workspace/.local-shell-mcp",
-            "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(tmp_path / ".worker-state"),
+            "WORKGATE_WORKSPACE_ROOT": "/workspace",
+            "WORKGATE_STATE_DIR": "/workspace/.workgate",
+            "WORKGATE_WORKER_STATE_DIR": str(tmp_path / ".worker-state"),
         }
     )
     result = subprocess.run(
@@ -389,7 +389,7 @@ class _FakeResponse:
 
 
 def test_worker_post_json_posts_json_and_returns_object(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
     captured: dict[str, object] = {}
@@ -424,7 +424,7 @@ def test_worker_post_json_posts_json_and_returns_object(monkeypatch):
 
 
 def test_worker_post_json_rejects_non_object_response(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -442,7 +442,7 @@ def test_worker_post_json_rejects_non_object_response(monkeypatch):
 
 
 def test_worker_post_json_includes_http_error_detail(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -467,7 +467,7 @@ def test_worker_post_json_includes_http_error_detail(monkeypatch):
 
 
 def test_worker_post_json_wraps_url_errors(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -485,7 +485,7 @@ def test_worker_post_json_wraps_url_errors(monkeypatch):
 
 
 def test_worker_post_json_uses_curl_when_available(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     captured: dict[str, object] = {}
 
@@ -497,7 +497,7 @@ def test_worker_post_json_uses_curl_when_available(monkeypatch):
         return subprocess.CompletedProcess(
             command,
             0,
-            stdout=b'{"ok": true}\nLOCAL_SHELL_MCP_HTTP_STATUS:200',
+            stdout=b'{"ok": true}\nWORKGATE_HTTP_STATUS:200',
             stderr=b"",
         )
 
@@ -526,7 +526,7 @@ def test_worker_post_json_uses_curl_when_available(monkeypatch):
 
 
 def test_worker_retry_delay_is_capped():
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     assert [worker._worker_retry_delay(i) for i in range(7)] == [
         1.0,
@@ -543,7 +543,7 @@ def test_worker_retry_delay_is_capped():
 async def test_worker_post_json_forever_retries_until_success(
     monkeypatch, capsys
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     calls = []
     sleeps = []
@@ -581,7 +581,7 @@ async def test_worker_post_json_forever_retries_until_success(
 async def test_worker_result_submission_keeps_heartbeats_while_retrying(
     monkeypatch,
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     result_attempts = 0
     heartbeat_calls = []
@@ -627,50 +627,46 @@ async def test_worker_result_submission_keeps_heartbeats_while_retrying(
 def test_worker_runtime_env_replaces_default_workspace_paths(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     workdir = tmp_path / "remote-workdir"
     worker_state = tmp_path / "worker-state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", "/workspace")
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_STATE_DIR", "/workspace/.local-shell-mcp"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(worker_state))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", "/workspace")
+    monkeypatch.setenv("WORKGATE_STATE_DIR", "/workspace/.workgate")
+    monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "false")
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(worker_state))
 
     worker._configure_worker_runtime_env(str(workdir))
 
-    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == str(workdir)
-    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(
-        worker_state / "runtime"
-    )
-    assert os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] == "true"
+    assert os.environ["WORKGATE_WORKSPACE_ROOT"] == str(workdir)
+    assert os.environ["WORKGATE_STATE_DIR"] == str(worker_state / "runtime")
+    assert os.environ["WORKGATE_ALLOW_FULL_CONTROL"] == "true"
 
 
 def test_worker_runtime_env_preserves_explicit_custom_paths(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     custom_workspace = tmp_path / "custom-workspace"
     custom_state = tmp_path / "custom-state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(custom_workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(custom_state))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(custom_workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(custom_state))
+    monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "false")
 
     worker._configure_worker_runtime_env(str(tmp_path / "remote-workdir"))
 
-    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == str(custom_workspace)
-    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(custom_state)
-    assert os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] == "true"
+    assert os.environ["WORKGATE_WORKSPACE_ROOT"] == str(custom_workspace)
+    assert os.environ["WORKGATE_STATE_DIR"] == str(custom_state)
+    assert os.environ["WORKGATE_ALLOW_FULL_CONTROL"] == "true"
 
 
 def test_worker_identity_round_trips_and_filters_by_server_name(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
 
     worker._write_worker_identity(
         {
@@ -698,7 +694,7 @@ def test_worker_identity_round_trips_and_filters_by_server_name(
 
 def test_worker_cli_keyboard_interrupt_exits_cleanly():
     code = """
-from local_shell_mcp.remote_worker import cli
+from workgate.remote_worker import cli
 
 
 def fake_asyncio_run(coro):
@@ -713,7 +709,7 @@ cli.run_worker_cli(
         "--server",
         "https://example.test",
         "--invite",
-        "lsmcp_inv_test",
+        "workgate_inv_test",
     ]
 )
 """
@@ -736,11 +732,11 @@ cli.run_worker_cli(
 async def test_remote_manager_persists_workers_and_resumes(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.config.settings import clear_settings_cache
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.config.settings import clear_settings_cache
+    from workgate.remote.manager import RemoteManager
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
     manager = RemoteManager()
@@ -784,11 +780,11 @@ async def test_remote_manager_persists_workers_and_resumes(
 async def test_remote_manager_resume_uses_token_name_after_rename(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.config.settings import clear_settings_cache
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.config.settings import clear_settings_cache
+    from workgate.remote.manager import RemoteManager
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
     manager = RemoteManager()
@@ -825,17 +821,17 @@ async def test_remote_manager_resume_uses_token_name_after_rename(
 async def test_remote_manager_list_machines_reports_counts_and_details(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.config.settings import clear_settings_cache
-    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker
+    from workgate.config.settings import clear_settings_cache
+    from workgate.remote.manager import RemoteManager, RemoteWorker
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
     manager = RemoteManager()
     manager._load_registry_unlocked()
     now = 1_000_000.0
-    monkeypatch.setattr("local_shell_mcp.remote.manager._utc", lambda: now)
+    monkeypatch.setattr("workgate.remote.manager._utc", lambda: now)
 
     recent = RemoteWorker(
         name="recent-worker", token="recent", last_seen=now - 5
@@ -865,17 +861,17 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
 
 
 def _configure_remote_state(tmp_path, monkeypatch, **overrides):
-    from local_shell_mcp.config.settings import clear_settings_cache
+    from workgate.config.settings import clear_settings_cache
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     for name, value in overrides.items():
-        monkeypatch.setenv(f"LOCAL_SHELL_MCP_{name.upper()}", str(value))
+        monkeypatch.setenv(f"WORKGATE_{name.upper()}", str(value))
     clear_settings_cache()
 
 
 def test_worker_post_rejects_non_http_server_url(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda _name: None)
 
@@ -885,7 +881,7 @@ def test_worker_post_rejects_non_http_server_url(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_post_forever_stops_on_permanent_http_error(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     calls = 0
 
@@ -911,7 +907,7 @@ async def test_worker_post_forever_stops_on_permanent_http_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_post_forever_retries_transient_http_error(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     calls = 0
     sleeps = []
@@ -940,7 +936,7 @@ async def test_worker_post_forever_retries_transient_http_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_long_worker_job_sends_heartbeats(monkeypatch):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     heartbeat_urls = []
 
@@ -971,7 +967,7 @@ async def test_long_worker_job_sends_heartbeats(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_remote_registry_recovers_from_backup(tmp_path, monkeypatch):
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.remote.manager import RemoteManager
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -1001,7 +997,7 @@ async def test_remote_registry_recovers_from_backup(tmp_path, monkeypatch):
 def test_remote_registry_refuses_silent_reset_when_both_copies_are_corrupt(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.remote.manager import RemoteManager
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -1015,7 +1011,7 @@ def test_remote_registry_refuses_silent_reset_when_both_copies_are_corrupt(
 
 @pytest.mark.asyncio
 async def test_remote_queue_limit_counts_inflight_jobs(tmp_path, monkeypatch):
-    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+    from workgate.remote.manager import RemoteManager, RemoteWorker, _utc
 
     _configure_remote_state(tmp_path, monkeypatch, remote_max_pending_jobs=1)
     manager = RemoteManager()
@@ -1053,7 +1049,7 @@ async def test_remote_queue_limit_counts_inflight_jobs(tmp_path, monkeypatch):
 async def test_remote_poll_skips_cancelled_job_and_delivers_next(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+    from workgate.remote.manager import RemoteManager, RemoteWorker, _utc
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -1075,7 +1071,7 @@ async def test_remote_poll_skips_cancelled_job_and_delivers_next(
 async def test_remote_result_is_rejected_from_wrong_worker(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+    from workgate.remote.manager import RemoteManager, RemoteWorker, _utc
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -1098,7 +1094,7 @@ async def test_remote_result_is_rejected_from_wrong_worker(
 
 
 def test_remote_machine_names_are_portably_validated(tmp_path, monkeypatch):
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.remote.manager import RemoteManager
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -1113,7 +1109,7 @@ def test_remote_machine_names_are_portably_validated(tmp_path, monkeypatch):
 async def test_worker_job_heartbeat_stops_when_job_finishes_during_sleep(
     monkeypatch,
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
     class FinishingTask:
         def __init__(self):

@@ -7,18 +7,18 @@ from contextlib import contextmanager
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.tool_session import retention as retention_module
-from local_shell_mcp.tool_session import store as store_module
-from local_shell_mcp.tool_session.store import (
+from workgate.config.settings import clear_settings_cache
+from workgate.tool_session import retention as retention_module
+from workgate.tool_session import store as store_module
+from workgate.tool_session.store import (
     SESSION_TERMINATION_PROMPT,
     ExpiredAgentSessionError,
     SessionTerminationRequestedError,
     UnknownAgentSessionError,
     get_tool_session_store,
 )
-from local_shell_mcp.utils import runtime_identity as runtime_identity_module
-from local_shell_mcp.utils.runtime_identity import (
+from workgate.utils import runtime_identity as runtime_identity_module
+from workgate.utils.runtime_identity import (
     MANAGED_JOB_LEASE_VERSION,
     ManagedJobLease,
     managed_job_lease_state,
@@ -31,7 +31,7 @@ def _start_peer_managed_job_lease(
     script = f"""
 import time
 from pathlib import Path
-from local_shell_mcp.utils.runtime_identity import ManagedJobLease
+from workgate.utils.runtime_identity import ManagedJobLease
 
 lease = ManagedJobLease({job_id!r})
 lease.acquire()
@@ -66,7 +66,7 @@ def _wait_for_peer_marker(
 
 
 def test_managed_job_lease_reports_unknown_live_and_dead(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     job_id = "job_lease_state"
 
@@ -90,7 +90,7 @@ def test_managed_job_lease_reports_unknown_live_and_dead(tmp_path, monkeypatch):
 def test_managed_job_lease_propagates_lock_acquisition_error(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
     @contextmanager
@@ -109,7 +109,7 @@ def test_managed_job_lease_propagates_lock_acquisition_error(
 def test_managed_job_lease_state_is_unknown_on_lock_io_error(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     job_id = "job_state_io_error"
     path = runtime_identity_module.managed_job_lease_path(job_id)
@@ -130,7 +130,7 @@ def test_managed_job_lease_state_is_unknown_on_lock_io_error(
 
 
 def test_create_session_returns_8_character_alnum_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -145,7 +145,7 @@ def test_create_session_returns_8_character_alnum_id(tmp_path, monkeypatch):
 
 
 def test_create_session_retries_id_collisions(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -168,7 +168,7 @@ def test_require_session_rejects_unknown_session_id():
 
 
 def test_snapshots_are_isolated_by_explicit_session(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -190,7 +190,7 @@ def test_snapshots_are_isolated_by_explicit_session(tmp_path, monkeypatch):
 def test_change_session_workdir_updates_session_and_clears_snapshots(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
@@ -216,7 +216,7 @@ def test_change_session_workdir_updates_session_and_clears_snapshots(
 
 
 def test_update_remote_session_workdir_clears_snapshots(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     remote = store.create_session(
@@ -250,8 +250,8 @@ def test_update_remote_session_workdir_clears_snapshots(tmp_path, monkeypatch):
 def test_remote_session_creation_requires_complete_durable_binding(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -272,8 +272,8 @@ def test_remote_session_creation_requires_complete_durable_binding(
 
 
 def test_remote_session_round_trips_through_cold_store(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     first_store = store_module.ToolSessionStore()
     first_store.clear()
@@ -296,8 +296,8 @@ def test_remote_session_round_trips_through_cold_store(tmp_path, monkeypatch):
 def test_sessions_and_snapshots_survive_new_store_instance(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     first_store = store_module.ToolSessionStore()
     first_store.clear()
@@ -326,8 +326,8 @@ def test_sessions_and_snapshots_survive_new_store_instance(
 def test_termination_request_is_durable_idempotent_and_blocks_tool_work(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -374,9 +374,9 @@ def test_tool_input_session_ids_only_reads_semantic_argument_envelopes():
 def test_explicit_session_expiry_is_enforced_and_removes_state(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -390,9 +390,9 @@ def test_explicit_session_expiry_is_enforced_and_removes_state(
 
 
 def test_idle_retention_prunes_sessions_when_listing(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "1")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -409,10 +409,10 @@ def test_idle_retention_prunes_sessions_when_listing(tmp_path, monkeypatch):
 def test_active_session_capacity_is_rejected_without_eviction(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -423,10 +423,10 @@ def test_active_session_capacity_is_rejected_without_eviction(
 
 
 def test_inactive_session_is_evicted_to_make_capacity(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -443,10 +443,10 @@ def test_inactive_session_is_evicted_to_make_capacity(tmp_path, monkeypatch):
 
 
 def test_snapshot_count_retention_keeps_newest_records(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS", "2")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_SESSION_SNAPSHOTS", "2")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -482,10 +482,10 @@ def test_snapshot_count_retention_keeps_newest_records(tmp_path, monkeypatch):
 def test_snapshot_count_retention_favors_new_insertion_when_timestamps_tie(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_SESSION_SNAPSHOTS", "1")
     clear_settings_cache()
     monkeypatch.setattr(store_module.time, "time", lambda: 100.0)
     store = store_module.ToolSessionStore()
@@ -517,10 +517,10 @@ def test_snapshot_count_retention_favors_new_insertion_when_timestamps_tie(
 def test_snapshot_sequence_migrates_legacy_rows_and_favors_new_record(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_SESSION_SNAPSHOTS", "1")
     clear_settings_cache()
     monkeypatch.setattr(store_module.time, "time", lambda: 100.0)
     store = store_module.ToolSessionStore()
@@ -558,10 +558,10 @@ def test_snapshot_sequence_migrates_legacy_rows_and_favors_new_record(
 def test_snapshot_metadata_rejects_one_record_over_byte_limit(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOT_BYTES", "1024")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_SESSION_SNAPSHOT_BYTES", "1024")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -578,9 +578,9 @@ def test_snapshot_metadata_rejects_one_record_over_byte_limit(
 
 
 def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -605,9 +605,9 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
 def test_expired_session_with_unconfirmed_lost_shell_job_is_preserved(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -634,9 +634,9 @@ def test_expired_session_with_unconfirmed_lost_shell_job_is_preserved(
 def test_confirmed_absent_lost_shell_job_does_not_block_expiry(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -666,9 +666,9 @@ def test_confirmed_absent_lost_shell_job_does_not_block_expiry(
 def test_active_job_backup_protects_expired_session(
     tmp_path, monkeypatch, primary_state
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -697,9 +697,9 @@ def test_active_job_backup_protects_expired_session(
 def test_invalid_primary_and_backup_conservatively_protect_sessions(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -717,9 +717,9 @@ def test_invalid_primary_and_backup_conservatively_protect_sessions(
 def test_expired_session_with_persistent_shell_is_preserved(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -738,8 +738,8 @@ def test_expired_session_with_persistent_shell_is_preserved(
 def test_persistent_shell_registry_releases_and_reconciles(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -764,8 +764,8 @@ def test_persistent_shell_registry_releases_and_reconciles(
 def test_scoped_shell_reconciliation_does_not_clear_other_session(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -787,8 +787,8 @@ def test_scoped_shell_reconciliation_does_not_clear_other_session(
 def test_scoped_shell_reservation_rollback_preserves_other_session(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -816,8 +816,8 @@ def test_scoped_shell_reservation_rollback_preserves_other_session(
 def test_exclusive_shell_reservation_rejects_other_session_owner(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -843,8 +843,8 @@ def test_exclusive_shell_reservation_rejects_other_session_owner(
 def test_persistent_shell_ids_unions_all_durable_sessions(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -859,10 +859,10 @@ def test_persistent_shell_ids_unions_all_durable_sessions(
 def test_inactive_session_with_persistent_shell_is_not_evicted(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -879,9 +879,9 @@ def test_inactive_session_with_persistent_shell_is_not_evicted(
 def test_reserved_shell_blocks_expiry_until_authoritative_reconciliation(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -904,9 +904,9 @@ def test_reserved_shell_blocks_expiry_until_authoritative_reconciliation(
 def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -934,9 +934,9 @@ def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
 def test_legacy_managed_job_does_not_protect_payload_endpoint(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -975,9 +975,9 @@ def test_live_peer_managed_job_still_protects_expired_session(
     monkeypatch.setattr(
         retention_module, "managed_job_lease_state", lambda *_args: "live"
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -1005,9 +1005,9 @@ def test_live_peer_managed_job_still_protects_expired_session(
 def test_real_peer_managed_job_lease_protects_payload_endpoints_until_exit(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -1061,9 +1061,9 @@ def test_current_managed_job_protects_destination_session_from_expiry(
     monkeypatch.setattr(
         retention_module, "managed_job_lease_state", lambda *_args: "live"
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -1102,10 +1102,10 @@ def test_current_managed_job_destination_blocks_capacity_eviction(
     monkeypatch.setattr(
         retention_module, "managed_job_lease_state", lambda *_args: "live"
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "2")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "2")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -1150,9 +1150,9 @@ def test_current_managed_job_destination_blocks_capacity_eviction(
 def test_durable_job_completion_no_longer_blocks_session_expiry(
     tmp_path, monkeypatch, status, path_key
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -1184,9 +1184,9 @@ def test_durable_job_completion_no_longer_blocks_session_expiry(
 def test_expired_remote_session_binding_is_preserved_for_explicit_cleanup(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -1216,10 +1216,10 @@ def test_expired_remote_session_binding_is_preserved_for_explicit_cleanup(
 def test_inactive_remote_session_is_not_evicted_without_worker_cleanup(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -1240,9 +1240,9 @@ def test_inactive_remote_session_is_not_evicted_without_worker_cleanup(
 
 
 def test_expiry_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "10")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "10")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -1278,9 +1278,9 @@ def test_expiry_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
 def test_expiry_prune_revalidates_concurrent_job_admission(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()
@@ -1321,10 +1321,10 @@ def test_expiry_prune_revalidates_concurrent_job_admission(
 
 
 def test_overflow_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "2")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "2")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -1335,7 +1335,7 @@ def test_overflow_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
     newer = store.create_session(workdir=tmp_path)
     peer = store_module.ToolSessionStore()
     clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     candidate_path = store._transaction_path(oldest.session_id)
     original_transaction = store._state_store.transaction
@@ -1366,10 +1366,10 @@ def test_overflow_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
 
 
 def test_pruning_loads_active_job_owners_once(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "3")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "3")
     clear_settings_cache()
     clock = [100.0]
     monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
@@ -1380,7 +1380,7 @@ def test_pruning_loads_active_job_owners_once(tmp_path, monkeypatch):
         clock[0] += 1
 
     clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
     store._state_store.write_json(
         store._state_store.layout.jobs_store_path,

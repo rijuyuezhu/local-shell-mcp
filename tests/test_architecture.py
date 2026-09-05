@@ -3,37 +3,37 @@ from collections import defaultdict
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parents[1]
-_PACKAGE_ROOT = _PROJECT_ROOT / "src" / "local_shell_mcp"
-_PACKAGE_NAME = "local_shell_mcp"
+_PACKAGE_ROOT = _PROJECT_ROOT / "src" / "workgate"
+_PACKAGE_NAME = "workgate"
 
 # `main` composes only domain CLI registrars. Each HTTP-capable executor consumes
 # exactly one shared Human UI route-composition contract.
 _ALLOWED_HTTP_EXECUTOR_UI_IMPORTS = frozenset(
     {
         (
-            "local_shell_mcp.executors.http.app",
-            "local_shell_mcp.ui.http.routes",
+            "workgate.executors.http.app",
+            "workgate.ui.http.routes",
         ),
     }
 )
 _ALLOWED_MCP_EXECUTOR_UI_IMPORTS = frozenset(
     {
         (
-            "local_shell_mcp.executors.mcp.app",
-            "local_shell_mcp.ui.http.routes",
+            "workgate.executors.mcp.app",
+            "workgate.ui.http.routes",
         ),
     }
 )
 _ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS = frozenset(
     {
-        ("local_shell_mcp.main", "local_shell_mcp.executors.cli"),
+        ("workgate.main", "workgate.executors.cli"),
     }
 )
 _ALLOWED_RELEASE_IMPORTS = frozenset(
     {
         (
-            "local_shell_mcp.release.platform_wheel",
-            "local_shell_mcp.ui.contracts",
+            "workgate.release.platform_wheel",
+            "workgate.ui.contracts",
         ),
     }
 )

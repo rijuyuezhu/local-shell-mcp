@@ -1,13 +1,13 @@
 # ChatGPT connector
 
-Add `local-shell-mcp` to ChatGPT as a custom MCP connector. Public deployments should use the built-in OAuth flow.
+Add `workgate` to ChatGPT as a custom MCP connector. Public deployments should use the built-in OAuth flow.
 
 ## Check the server
 
 Confirm that:
 
 1. the public HTTPS hostname reaches the server;
-2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that origin;
+2. `WORKGATE_BASE_URL` exactly matches that origin;
 3. OAuth is enabled and the admin PIN is a long random value;
 4. the health endpoint responds.
 
@@ -33,13 +33,13 @@ Use a ChatGPT mode that exposes full MCP tools when you need shell, filesystem, 
 ## Test it
 
 ```text
-Use local-shell-mcp. Start a session in my project workspace, inspect its instructions and Git status, and summarize what you can access. Do not edit files yet.
+Use workgate. Start a session in my project workspace, inspect its instructions and Git status, and summarize what you can access. Do not edit files yet.
 ```
 
 Then try a harmless command:
 
 ```text
-Use local-shell-mcp to run pwd in that session and report the output.
+Use workgate to run pwd in that session and report the output.
 ```
 
 ## Common mistakes

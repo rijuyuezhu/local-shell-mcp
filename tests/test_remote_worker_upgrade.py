@@ -19,22 +19,22 @@ from starlette.testclient import TestClient
 def _configure_remote_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from local_shell_mcp.config.settings import clear_settings_cache
-    from local_shell_mcp.persistence import configure_state_store
-    from local_shell_mcp.tool_session import configure_tool_session_store
+    from workgate.config.settings import clear_settings_cache
+    from workgate.persistence import configure_state_store
+    from workgate.tool_session import configure_tool_session_store
 
     configure_tool_session_store(None)
     configure_state_store(None)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_REMOTE_POLL_TIMEOUT_S", "1")
     clear_settings_cache()
 
 
 def _runtime_report(
     *, digest: str | None = None, version: str | None = None
 ) -> dict[str, Any]:
-    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+    from workgate.remote.bundle import worker_bundle_manifest
 
     manifest = worker_bundle_manifest()
     return {
@@ -47,7 +47,7 @@ def _runtime_report(
 
 
 async def _registered_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.remote.manager import RemoteManager
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -68,7 +68,7 @@ async def _registered_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 async def test_enrollment_requires_managed_runtime_without_consuming_invite(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.manager import (
+    from workgate.remote.manager import (
         RemoteManager,
         WorkerRuntimeCompatibilityError,
     )
@@ -101,8 +101,8 @@ async def test_enrollment_requires_managed_runtime_without_consuming_invite(
 async def test_stale_managed_runtime_enrolls_only_for_upgrade(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.bundle import worker_bundle_manifest
-    from local_shell_mcp.remote.manager import RemoteManager
+    from workgate.remote.bundle import worker_bundle_manifest
+    from workgate.remote.manager import RemoteManager
 
     _configure_remote_state(tmp_path, monkeypatch)
     manager = RemoteManager()
@@ -217,7 +217,7 @@ def _poll_report(*, digest: str, version: str = "3.9.1") -> dict[str, Any]:
 async def test_poll_mismatch_records_report_and_does_not_dequeue(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+    from workgate.remote.bundle import worker_bundle_manifest
 
     manager, registered = await _registered_manager(tmp_path, monkeypatch)
     worker = manager.workers[registered["name"]]
@@ -241,7 +241,7 @@ async def test_poll_mismatch_records_report_and_does_not_dequeue(
     assert worker.queue.qsize() == 1
     assert worker.info["poll_protocol_version"] == 2
     assert worker.info["runtime_kind"] == "managed_bundle"
-    assert worker.info["lsm_version"] == "3.9.1"
+    assert worker.info["workgate_version"] == "3.9.1"
     assert worker.info["worker_bundle_sha256"] == "0" * 64
     persisted = json.loads(manager._registry_path().read_text(encoding="utf-8"))
     assert persisted["workers"][0]["info"]["poll_protocol_version"] == 2
@@ -250,7 +250,7 @@ async def test_poll_mismatch_records_report_and_does_not_dequeue(
 
 @pytest.mark.asyncio
 async def test_poll_matching_digest_delivers_job(tmp_path, monkeypatch):
-    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+    from workgate.remote.bundle import worker_bundle_manifest
 
     manager, registered = await _registered_manager(tmp_path, monkeypatch)
     job = {"id": "job-1", "tool": "read", "args": {}}
@@ -278,7 +278,7 @@ async def test_poll_matching_digest_delivers_job(tmp_path, monkeypatch):
 async def test_poll_rejects_legacy_reports_without_dequeuing(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote.manager import WorkerRuntimeCompatibilityError
+    from workgate.remote.manager import WorkerRuntimeCompatibilityError
 
     manager, registered = await _registered_manager(tmp_path, monkeypatch)
     worker = manager.workers[registered["name"]]
@@ -338,7 +338,7 @@ async def test_poll_rejects_malformed_reports(
 
 
 def test_poll_endpoint_accepts_empty_body_and_rejects_non_object(monkeypatch):
-    from local_shell_mcp.remote import http
+    from workgate.remote import http
 
     calls = []
 
@@ -367,8 +367,8 @@ def test_poll_endpoint_accepts_empty_body_and_rejects_non_object(monkeypatch):
 
 
 def test_runtime_compatibility_errors_use_conflict_status(monkeypatch):
-    from local_shell_mcp.remote import http
-    from local_shell_mcp.remote.manager import WorkerRuntimeCompatibilityError
+    from workgate.remote import http
+    from workgate.remote.manager import WorkerRuntimeCompatibilityError
 
     class Manager:
         async def register_worker(self, payload):
@@ -399,9 +399,9 @@ def test_runtime_compatibility_errors_use_conflict_status(monkeypatch):
 async def test_runtime_conflict_does_not_delete_stored_identity(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote_worker import worker
+    from workgate.remote_worker import worker
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     identity = {
         "server": "https://controller.test",
         "name": "worker-a",
@@ -431,8 +431,8 @@ async def test_runtime_conflict_does_not_delete_stored_identity(
 
 
 def test_worker_bundle_manifest_is_deterministic_bounded_and_no_store():
-    from local_shell_mcp.remote import bundle
-    from local_shell_mcp.remote.http import remote_routes
+    from workgate.remote import bundle
+    from workgate.remote.http import remote_routes
 
     bundle.worker_bundle_bytes.cache_clear()
     bundle.worker_bundle_manifest.cache_clear()
@@ -456,56 +456,56 @@ def test_worker_bundle_manifest_is_deterministic_bounded_and_no_store():
 
 
 def test_worker_bundle_keeps_strict_runtime_allowlist():
-    from local_shell_mcp.remote.bundle import worker_bundle_bytes
+    from workgate.remote.bundle import worker_bundle_bytes
 
     with tarfile.open(
         fileobj=io.BytesIO(worker_bundle_bytes()), mode="r:gz"
     ) as tar:
         names = set(tar.getnames())
 
-    assert "local_shell_mcp/remote_worker/runtime.py" in names
-    assert "local_shell_mcp/remote_worker/lifecycle.py" in names
-    assert "local_shell_mcp/remote_worker/profiles.py" in names
-    assert "local_shell_mcp/remote_worker/state.py" in names
-    assert "local_shell_mcp/remote_worker/worker.py" in names
-    assert "local_shell_mcp/audit/__init__.py" in names
-    assert "local_shell_mcp/audit/core.py" in names
-    assert "local_shell_mcp/audit/payloads.py" in names
-    assert "local_shell_mcp/ops/patch/__init__.py" in names
-    assert "local_shell_mcp/ops/patch/envelope.py" in names
-    assert "local_shell_mcp/version.py" in names
-    assert "local_shell_mcp/terminal/__init__.py" in names
-    assert "local_shell_mcp/terminal/conpty.py" in names
-    assert "local_shell_mcp/telemetry/__init__.py" in names
-    assert "local_shell_mcp/telemetry/system.py" in names
-    assert "local_shell_mcp/ui/__init__.py" in names
-    assert "local_shell_mcp/ui/contracts.py" in names
-    assert "local_shell_mcp/ui/dashboard.py" in names
-    assert "local_shell_mcp/terminal/bridge.py" in names
-    assert "local_shell_mcp/terminal/contracts.py" in names
-    assert "local_shell_mcp/terminal/tmux.py" in names
-    assert "local_shell_mcp/ops/agent.py" in names
-    assert "local_shell_mcp/agent_bridge/skills.py" in names
-    assert "local_shell_mcp/agent_bridge/sources.py" in names
-    assert "local_shell_mcp/agent_bridge/models.py" in names
-    assert "local_shell_mcp/jobs/reconciliation.py" in names
-    assert "local_shell_mcp/jobs/runner_bootstrap.py" in names
-    assert "local_shell_mcp/jobs/runtime.py" in names
-    assert "local_shell_mcp/persistence/__init__.py" in names
-    assert "local_shell_mcp/persistence/store.py" in names
-    assert "local_shell_mcp/agent_bridge/status.py" not in names
-    assert "local_shell_mcp/config/cli.py" not in names
-    assert "local_shell_mcp/jobs/cli.py" not in names
-    assert not any(name.startswith("local_shell_mcp/tools/") for name in names)
-    assert "local_shell_mcp/schemas/result_models/version.py" not in names
-    assert "local_shell_mcp/utils/path_locks.py" in names
-    assert "local_shell_mcp/utils/private_files.py" in names
-    assert "local_shell_mcp/utils/processes.py" in names
-    assert "local_shell_mcp/remote/manager.py" not in names
-    assert "local_shell_mcp/remote/http.py" not in names
-    assert "local_shell_mcp/remote/service.py" not in names
+    assert "workgate/remote_worker/runtime.py" in names
+    assert "workgate/remote_worker/lifecycle.py" in names
+    assert "workgate/remote_worker/profiles.py" in names
+    assert "workgate/remote_worker/state.py" in names
+    assert "workgate/remote_worker/worker.py" in names
+    assert "workgate/audit/__init__.py" in names
+    assert "workgate/audit/core.py" in names
+    assert "workgate/audit/payloads.py" in names
+    assert "workgate/ops/patch/__init__.py" in names
+    assert "workgate/ops/patch/envelope.py" in names
+    assert "workgate/version.py" in names
+    assert "workgate/terminal/__init__.py" in names
+    assert "workgate/terminal/conpty.py" in names
+    assert "workgate/telemetry/__init__.py" in names
+    assert "workgate/telemetry/system.py" in names
+    assert "workgate/ui/__init__.py" in names
+    assert "workgate/ui/contracts.py" in names
+    assert "workgate/ui/dashboard.py" in names
+    assert "workgate/terminal/bridge.py" in names
+    assert "workgate/terminal/contracts.py" in names
+    assert "workgate/terminal/tmux.py" in names
+    assert "workgate/ops/agent.py" in names
+    assert "workgate/agent_bridge/skills.py" in names
+    assert "workgate/agent_bridge/sources.py" in names
+    assert "workgate/agent_bridge/models.py" in names
+    assert "workgate/jobs/reconciliation.py" in names
+    assert "workgate/jobs/runner_bootstrap.py" in names
+    assert "workgate/jobs/runtime.py" in names
+    assert "workgate/persistence/__init__.py" in names
+    assert "workgate/persistence/store.py" in names
+    assert "workgate/agent_bridge/status.py" not in names
+    assert "workgate/config/cli.py" not in names
+    assert "workgate/jobs/cli.py" not in names
+    assert not any(name.startswith("workgate/tools/") for name in names)
+    assert "workgate/schemas/result_models/version.py" not in names
+    assert "workgate/utils/path_locks.py" in names
+    assert "workgate/utils/private_files.py" in names
+    assert "workgate/utils/processes.py" in names
+    assert "workgate/remote/manager.py" not in names
+    assert "workgate/remote/http.py" not in names
+    assert "workgate/remote/service.py" not in names
     assert not any(
-        name.startswith("local_shell_mcp/ui/static/")
+        name.startswith("workgate/ui/static/")
         or "ui_static" in name
         or name.startswith("tests/")
         for name in names
@@ -513,7 +513,7 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
 
 
 def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
-    from local_shell_mcp.remote.bundle import worker_bundle_bytes
+    from workgate.remote.bundle import worker_bundle_bytes
 
     archive = tmp_path / "worker.tgz"
     runtime = tmp_path / "runtime"
@@ -524,27 +524,27 @@ def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
     paths = sysconfig.get_paths()
     dependencies = sorted({paths["purelib"], paths["platlib"]})
     modules = [
-        "local_shell_mcp.remote_worker.__main__",
-        "local_shell_mcp.audit",
-        "local_shell_mcp.telemetry.system",
-        "local_shell_mcp.ui.dashboard",
-        "local_shell_mcp.terminal.bridge",
-        "local_shell_mcp.terminal.tmux",
-        "local_shell_mcp.ops.session",
-        "local_shell_mcp.persistence",
-        "local_shell_mcp.persistence.store",
-        "local_shell_mcp.ops.agent",
-        "local_shell_mcp.agent_bridge.sources",
-        "local_shell_mcp.schemas.result_models.agent",
-        "local_shell_mcp.ops.shell",
-        "local_shell_mcp.jobs.reconciliation",
-        "local_shell_mcp.jobs.runtime",
-        "local_shell_mcp.ops.todo",
-        "local_shell_mcp.ops.files",
-        "local_shell_mcp.ops.read",
-        "local_shell_mcp.ops.search",
-        "local_shell_mcp.ops.secret_scan",
-        "local_shell_mcp.ops.transfer",
+        "workgate.remote_worker.__main__",
+        "workgate.audit",
+        "workgate.telemetry.system",
+        "workgate.ui.dashboard",
+        "workgate.terminal.bridge",
+        "workgate.terminal.tmux",
+        "workgate.ops.session",
+        "workgate.persistence",
+        "workgate.persistence.store",
+        "workgate.ops.agent",
+        "workgate.agent_bridge.sources",
+        "workgate.schemas.result_models.agent",
+        "workgate.ops.shell",
+        "workgate.jobs.reconciliation",
+        "workgate.jobs.runtime",
+        "workgate.ops.todo",
+        "workgate.ops.files",
+        "workgate.ops.read",
+        "workgate.ops.search",
+        "workgate.ops.secret_scan",
+        "workgate.ops.transfer",
     ]
     code = """
 import importlib
@@ -554,7 +554,7 @@ import sys
 runtime, dependencies, modules = sys.argv[1:]
 sys.path[:] = [runtime, *json.loads(dependencies), *[
     item for item in sys.path
-    if item and "site-packages" not in item and "local-shell-mcp" not in item
+    if item and "site-packages" not in item and "workgate" not in item
 ]]
 for name in json.loads(modules):
     importlib.import_module(name)
@@ -580,7 +580,7 @@ print("worker-bundle-imports-ok")
 
 
 def test_worker_bundle_job_runner_executes_without_checkout_or_site(tmp_path):
-    from local_shell_mcp.remote.bundle import worker_bundle_bytes
+    from workgate.remote.bundle import worker_bundle_bytes
 
     archive = tmp_path / "worker.tgz"
     runtime = tmp_path / "runtime"
@@ -602,7 +602,7 @@ def test_worker_bundle_job_runner_executes_without_checkout_or_site(tmp_path):
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     env["PYTHONNOUSERSITE"] = "1"
-    bootstrap = runtime / "local_shell_mcp" / "jobs" / "runner_bootstrap.py"
+    bootstrap = runtime / "workgate" / "jobs" / "runner_bootstrap.py"
     completed = subprocess.run(
         [
             sys.executable,
@@ -643,7 +643,7 @@ def _runtime_archive_bytes(
     extra_members: list[tarfile.TarInfo] | None = None,
     overrides: dict[str, bytes] | None = None,
 ) -> bytes:
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     replacements = overrides or {}
     buffer = io.BytesIO()
@@ -671,18 +671,18 @@ def _runtime_archive_bytes(
 
 @pytest.mark.parametrize("kind", ["traversal", "symlink", "hardlink"])
 def test_safe_extract_rejects_unsafe_archive_members(tmp_path, kind):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     if kind == "traversal":
         member = tarfile.TarInfo("../escape.py")
     elif kind == "symlink":
-        member = tarfile.TarInfo("local_shell_mcp/link.py")
+        member = tarfile.TarInfo("workgate/link.py")
         member.type = tarfile.SYMTYPE
         member.linkname = "/tmp/target"
     else:
-        member = tarfile.TarInfo("local_shell_mcp/hard.py")
+        member = tarfile.TarInfo("workgate/hard.py")
         member.type = tarfile.LNKTYPE
-        member.linkname = "local_shell_mcp/__init__.py"
+        member.linkname = "workgate/__init__.py"
     archive = tmp_path / "worker.tgz"
     archive.write_bytes(_runtime_archive_bytes(extra_members=[member]))
 
@@ -692,7 +692,7 @@ def test_safe_extract_rejects_unsafe_archive_members(tmp_path, kind):
 
 
 def test_fetch_bytes_bypasses_cache_and_rejects_cross_origin(monkeypatch):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     captured = {}
 
@@ -732,7 +732,7 @@ def test_fetch_bytes_bypasses_cache_and_rejects_cross_origin(monkeypatch):
     assert request.get_header("Cache-control") == "no-cache"
     assert request.get_header("Pragma") == "no-cache"
     assert request.get_header("User-agent") == (
-        f"local-shell-mcp-worker/{runtime.__version__}"
+        f"workgate-worker/{runtime.__version__}"
     )
     assert captured["read_size"] == 3
 
@@ -746,9 +746,9 @@ def test_fetch_bytes_bypasses_cache_and_rejects_cross_origin(monkeypatch):
 
 
 def test_worker_update_redirect_preserves_user_agent_and_origin():
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
-    user_agent = f"local-shell-mcp-worker/{runtime.__version__}"
+    user_agent = f"workgate-worker/{runtime.__version__}"
     request = urllib.request.Request(
         "https://controller.test/manifest",
         headers={"User-Agent": user_agent},
@@ -779,7 +779,7 @@ def test_worker_update_redirect_preserves_user_agent_and_origin():
 
 
 def test_manifest_requires_matching_version_digest_and_same_origin(monkeypatch):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     digest = "a" * 64
 
@@ -838,7 +838,7 @@ def test_manifest_requires_matching_version_digest_and_same_origin(monkeypatch):
 
 
 def _mock_runtime_download(monkeypatch, payload: bytes, version: str):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     digest = hashlib.sha256(payload).hexdigest()
     monkeypatch.setattr(
@@ -861,9 +861,9 @@ def _mock_runtime_download(monkeypatch, payload: bytes, version: str):
 def test_install_runtime_is_transactional_and_short_circuits(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     payload = _runtime_archive_bytes()
     digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
     instruction = {
@@ -882,7 +882,7 @@ def test_install_runtime_is_transactional_and_short_circuits(
     }
     assert (
         runtime.worker_runtime_dir_for_digest(digest)
-        / "local_shell_mcp/remote_worker/worker.py"
+        / "workgate/remote_worker/worker.py"
     ).is_file()
 
     monkeypatch.setattr(
@@ -899,10 +899,10 @@ def test_install_runtime_is_transactional_and_short_circuits(
 def test_current_runtime_identity_requires_executing_managed_module(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote_worker import runtime
-    from local_shell_mcp.remote_worker.state import WORKER_RUNTIME_DIGEST_ENV
+    from workgate.remote_worker import runtime
+    from workgate.remote_worker.state import WORKER_RUNTIME_DIGEST_ENV
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     payload = _runtime_archive_bytes()
     digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
     runtime.install_runtime(
@@ -938,9 +938,9 @@ def test_current_runtime_identity_requires_executing_managed_module(
 def test_install_failure_restores_old_runtime_and_metadata(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     payload = _runtime_archive_bytes()
     digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
     old_runtime = runtime.worker_runtime_dir_for_digest(digest)
@@ -971,9 +971,9 @@ def test_install_failure_restores_old_runtime_and_metadata(
 
 
 def test_install_rejects_digest_mismatch_and_downgrade(tmp_path, monkeypatch):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     payload = _runtime_archive_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     corrupted = payload[:-1] + bytes([payload[-1] ^ 1])
@@ -1015,9 +1015,9 @@ def test_install_rejects_digest_mismatch_and_downgrade(tmp_path, monkeypatch):
 
 
 def test_reexec_argv_and_pythonpath_are_safe(tmp_path, monkeypatch):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     runtime_path = str(runtime.worker_runtime_dir())
     monkeypatch.setenv(
         "PYTHONPATH",
@@ -1031,7 +1031,7 @@ def test_reexec_argv_and_pythonpath_are_safe(tmp_path, monkeypatch):
     assert argv == [
         sys.executable,
         "-m",
-        "local_shell_mcp.remote_worker",
+        "workgate.remote_worker",
         "run",
     ]
     assert "--invite" not in argv
@@ -1041,7 +1041,7 @@ def test_reexec_argv_and_pythonpath_are_safe(tmp_path, monkeypatch):
 def test_reexec_uses_selected_runtime_cwd_on_all_platforms(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     old_digest = "a" * 64
     new_digest = "b" * 64
@@ -1049,8 +1049,8 @@ def test_reexec_uses_selected_runtime_cwd_on_all_platforms(
     new_runtime = tmp_path / "runtimes" / new_digest
     old_runtime.mkdir(parents=True)
     new_runtime.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256", new_digest)
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_RUNTIME_SHA256", new_digest)
     monkeypatch.chdir(old_runtime)
 
     captured = {}
@@ -1091,9 +1091,9 @@ def test_reexec_uses_selected_runtime_cwd_on_all_platforms(
 async def test_worker_processes_enrollment_upgrade_before_poll(
     monkeypatch, tmp_path
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(
         worker, "_configure_worker_runtime_env", lambda workdir: None
     )
@@ -1142,9 +1142,9 @@ async def test_worker_processes_enrollment_upgrade_before_poll(
 async def test_worker_processes_required_upgrade_before_job(
     monkeypatch, tmp_path
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(
         worker, "_configure_worker_runtime_env", lambda workdir: None
     )
@@ -1215,9 +1215,9 @@ async def test_worker_processes_required_upgrade_before_job(
 async def test_upgrade_retry_is_capped_and_resets_after_successful_poll(
     monkeypatch, tmp_path
 ):
-    import local_shell_mcp.remote_worker.worker as worker
+    import workgate.remote_worker.worker as worker
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(
         worker, "_configure_worker_runtime_env", lambda workdir: None
     )
@@ -1280,7 +1280,7 @@ def test_join_script_installs_persistent_verified_runtime():
     from importlib import resources
 
     script = (
-        resources.files("local_shell_mcp.remote")
+        resources.files("workgate.remote")
         .joinpath("join_worker.sh")
         .read_text(encoding="utf-8")
     )
@@ -1293,9 +1293,7 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "runtime_is_installed" in script
     assert "write_profile_metadata" in script
     assert "install_launcher" in script
-    assert (
-        "from local_shell_mcp.remote_worker.profile_launcher import" in script
-    )
+    assert "from workgate.remote_worker.profile_launcher import" in script
     assert "ensure_profile_launcher(sys.argv[1])" in script
     assert "Reusing worker runtime" in script
     assert "?manifest=1" in script
@@ -1303,11 +1301,8 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "sha256" in script
     assert "member.isreg()" in script
     assert "os.replace(staging, runtime)" in script
-    assert 'export LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR"' in script
-    assert (
-        'export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
-        in script
-    )
+    assert 'export WORKGATE_WORKER_STATE_DIR="$STATE_DIR"' in script
+    assert 'export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"' in script
     assert (
         'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
     )
@@ -1332,7 +1327,7 @@ def test_join_script_uses_verified_runtime_and_absolute_relative_state(
     from importlib import resources
 
     script = (
-        resources.files("local_shell_mcp.remote")
+        resources.files("workgate.remote")
         .joinpath("join_worker.sh")
         .read_text(encoding="utf-8")
         .replace("__REMOTE_SERVER__", "https://controller.test")
@@ -1351,7 +1346,7 @@ from pathlib import Path
 
 
 def ensure_profile_launcher(_python=None):
-    path = Path(os.environ["LOCAL_SHELL_MCP_WORKER_STATE_DIR"]) / "run"
+    path = Path(os.environ["WORKGATE_WORKER_STATE_DIR"]) / "run"
     path.write_text("#!/bin/sh\\n", encoding="utf-8")
     return path, True
 """
@@ -1369,9 +1364,9 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
             "source": {source!r},
             "cwd": str(Path.cwd()),
             "argv": sys.argv[1:],
-            "state_dir": os.environ.get("LOCAL_SHELL_MCP_WORKER_STATE_DIR"),
+            "state_dir": os.environ.get("WORKGATE_WORKER_STATE_DIR"),
             "runtime_digest": os.environ.get(
-                "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"
+                "WORKGATE_WORKER_RUNTIME_SHA256"
             ),
         }}
     ),
@@ -1381,12 +1376,8 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
 
     bundle = _runtime_archive_bytes(
         overrides={
-            "local_shell_mcp/remote_worker/__main__.py": probe_module(
-                "managed"
-            ),
-            "local_shell_mcp/remote_worker/profile_launcher.py": (
-                launcher_module
-            ),
+            "workgate/remote_worker/__main__.py": probe_module("managed"),
+            "workgate/remote_worker/profile_launcher.py": (launcher_module),
         }
     )
     digest = hashlib.sha256(bundle).hexdigest()
@@ -1407,11 +1398,9 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
     )
 
     checkout = tmp_path / "checkout"
-    checkout_package = checkout / "local_shell_mcp" / "remote_worker"
+    checkout_package = checkout / "workgate" / "remote_worker"
     checkout_package.mkdir(parents=True)
-    (checkout / "local_shell_mcp" / "__init__.py").write_text(
-        "", encoding="utf-8"
-    )
+    (checkout / "workgate" / "__init__.py").write_text("", encoding="utf-8")
     (checkout_package / "__init__.py").write_text("", encoding="utf-8")
     (checkout_package / "__main__.py").write_bytes(probe_module("checkout"))
     (checkout_package / "profile_launcher.py").write_bytes(launcher_module)
@@ -1443,7 +1432,7 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
             if not key.startswith(("COVERAGE_", "COV_CORE_"))
         },
         "PATH": os.pathsep.join((str(bin_dir), os.environ["PATH"])),
-        "LOCAL_SHELL_MCP_WORKER_STATE_DIR": "worker-state",
+        "WORKGATE_WORKER_STATE_DIR": "worker-state",
         "FAKE_MANIFEST": str(manifest_path),
         "FAKE_BUNDLE": str(bundle_path),
         "BOOTSTRAP_PROBE": str(probe_path),
@@ -1499,13 +1488,13 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
 def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
     from importlib import resources
 
-    from local_shell_mcp.remote.bundle import (
+    from workgate.remote.bundle import (
         worker_bundle_bytes,
         worker_bundle_manifest,
     )
 
     script = (
-        resources.files("local_shell_mcp.remote")
+        resources.files("workgate.remote")
         .joinpath("join_worker.sh")
         .read_text(encoding="utf-8")
         .replace("__REMOTE_SERVER__", "https://controller.test")
@@ -1558,7 +1547,7 @@ def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
     environment = {
         **os.environ,
         "PATH": os.pathsep.join((str(bin_dir), os.environ["PATH"])),
-        "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(state_dir),
+        "WORKGATE_WORKER_STATE_DIR": str(state_dir),
         "FAKE_CURL_REQUESTS": str(requests_path),
         "FAKE_MANIFEST": str(manifest_path),
         "FAKE_BUNDLE": str(bundle_path),
@@ -1614,9 +1603,9 @@ def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
 
 
 def test_bundle_rejects_stale_digest_and_retry_logs_redact_secrets(capsys):
-    from local_shell_mcp.remote import bundle
-    from local_shell_mcp.remote.http import remote_routes
-    from local_shell_mcp.remote_worker import worker
+    from workgate.remote import bundle
+    from workgate.remote.http import remote_routes
+    from workgate.remote_worker import worker
 
     client = TestClient(Starlette(routes=remote_routes()))
     response = client.get("/remote/worker-bundle.tgz?sha256=" + "0" * 64)
@@ -1643,7 +1632,7 @@ def test_bundle_rejects_stale_digest_and_retry_logs_redact_secrets(capsys):
 
 
 def test_fetch_latest_manifest_revalidates_stable_identity(monkeypatch):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     digest = "a" * 64
     initial = json.dumps({"bundle_version": "3.9.1", "sha256": digest}).encode()
@@ -1687,7 +1676,7 @@ def test_fetch_latest_manifest_revalidates_stable_identity(monkeypatch):
 def test_fetch_latest_manifest_rejects_invalid_bootstrap_identity(
     monkeypatch, payload, message
 ):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     monkeypatch.setattr(
         runtime, "_fetch_bytes", lambda *args, **kwargs: payload
@@ -1705,9 +1694,9 @@ def test_fetch_latest_manifest_rejects_invalid_bootstrap_identity(
 def test_install_runtime_force_reinstalls_matching_digest(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     payload = _runtime_archive_bytes()
     digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
     instruction = {

@@ -13,18 +13,18 @@ import pytest
 import uvicorn
 from starlette.applications import Starlette
 
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.ops.transfer import (
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.ops.transfer import (
     transfer_begin_write,
     transfer_write_bytes,
 )
-from local_shell_mcp.remote.transfer_gateway import (
+from workgate.remote.transfer_gateway import (
     TransferGatewayStore,
     build_transfer_gateway_router,
 )
-from local_shell_mcp.remote_worker import http_transfer
-from local_shell_mcp.remote_worker.http_transfer import WorkerHTTPTransferError
-from local_shell_mcp.utils.private_files import write_private_bytes
+from workgate.remote_worker import http_transfer
+from workgate.remote_worker.http_transfer import WorkerHTTPTransferError
+from workgate.utils.private_files import write_private_bytes
 
 
 @contextmanager
@@ -35,7 +35,7 @@ def _gateway_server(monkeypatch: pytest.MonkeyPatch) -> Generator[str]:
     listener.listen(128)
     port = int(listener.getsockname()[1])
     base_url = f"http://127.0.0.1:{port}"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", base_url)
+    monkeypatch.setenv("WORKGATE_BASE_URL", base_url)
     clear_settings_cache()
     app = Starlette(routes=list(build_transfer_gateway_router()))
     server = uvicorn.Server(

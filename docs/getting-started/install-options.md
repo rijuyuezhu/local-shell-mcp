@@ -7,11 +7,11 @@ Choose where commands should run and how much isolation you need.
 Best for development machines and contributors:
 
 ```bash
-git clone https://github.com/rijuyuezhu/local-shell-mcp.git
-cd local-shell-mcp
+git clone https://github.com/rijuyuezhu/workgate.git
+cd workgate
 uv sync
 cp .env.example .env
-uv run local-shell-mcp server --mode mcp
+uv run workgate server --mode mcp
 ```
 
 Continue with the [Quickstart](quickstart.md) to configure OAuth, HTTPS, and a client connection.
@@ -21,11 +21,11 @@ Continue with the [Quickstart](quickstart.md) to configure OAuth, HTTPS, and a c
 Best when you want a normal Python installation without a source checkout:
 
 ```bash
-pipx install local-shell-mcp
+pipx install workgate
 # or
-pip install local-shell-mcp
+pip install workgate
 
-local-shell-mcp server --mode mcp
+workgate server --mode mcp
 ```
 
 Platform-specific wheels include the native OpenTUI client on supported platforms. A universal wheel may provide only the server; the browser interface remains available.
@@ -35,7 +35,7 @@ Platform-specific wheels include the native OpenTUI client on supported platform
 Best for a self-contained installation without managing a Python environment. Download the archive for your operating system and architecture from the GitHub release, then set an explicit workspace:
 
 ```bash
-LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project   ./local-shell-mcp server --mode mcp
+WORKGATE_WORKSPACE_ROOT=/path/to/project   ./workgate server --mode mcp
 ```
 
 Host commands such as Git, compilers, package managers, and shells still need to be installed on the machine where the server runs. POSIX persistent shells also require tmux.

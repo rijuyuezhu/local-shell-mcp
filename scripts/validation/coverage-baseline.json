@@ -1,871 +1,871 @@
 {
   "files": {
-    "src/local_shell_mcp/__init__.py": {
+    "src/workgate/__init__.py": {
       "num_branches": 0,
       "num_statements": 1,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/agent_bridge/__init__.py": {
+    "src/workgate/agent_bridge/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/agent_bridge/mcp.py": {
+    "src/workgate/agent_bridge/mcp.py": {
       "num_branches": 24,
       "num_statements": 84,
       "percent_covered": 69.444444
     },
-    "src/local_shell_mcp/agent_bridge/models.py": {
+    "src/workgate/agent_bridge/models.py": {
       "num_branches": 6,
       "num_statements": 152,
       "percent_covered": 96.202532
     },
-    "src/local_shell_mcp/agent_bridge/redaction.py": {
+    "src/workgate/agent_bridge/redaction.py": {
       "num_branches": 28,
       "num_statements": 72,
       "percent_covered": 99.0
     },
-    "src/local_shell_mcp/agent_bridge/registry.py": {
+    "src/workgate/agent_bridge/registry.py": {
       "num_branches": 32,
       "num_statements": 95,
       "percent_covered": 88.976378
     },
-    "src/local_shell_mcp/agent_bridge/service.py": {
+    "src/workgate/agent_bridge/service.py": {
       "num_branches": 38,
       "num_statements": 106,
       "percent_covered": 74.305556
     },
-    "src/local_shell_mcp/agent_bridge/skills.py": {
+    "src/workgate/agent_bridge/skills.py": {
       "num_branches": 152,
       "num_statements": 360,
       "percent_covered": 78.125
     },
-    "src/local_shell_mcp/agent_bridge/sources.py": {
+    "src/workgate/agent_bridge/sources.py": {
       "num_branches": 26,
       "num_statements": 75,
       "percent_covered": 92.079208
     },
-    "src/local_shell_mcp/agent_bridge/state.py": {
+    "src/workgate/agent_bridge/state.py": {
       "num_branches": 24,
       "num_statements": 93,
       "percent_covered": 83.760684
     },
-    "src/local_shell_mcp/agent_bridge/tools.py": {
+    "src/workgate/agent_bridge/tools.py": {
       "num_branches": 10,
       "num_statements": 80,
       "percent_covered": 97.777778
     },
-    "src/local_shell_mcp/audit/core.py": {
+    "src/workgate/audit/core.py": {
       "num_branches": 188,
       "num_statements": 434,
       "percent_covered": 82.154341
     },
-    "src/local_shell_mcp/config/__init__.py": {
+    "src/workgate/config/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/config/settings.py": {
+    "src/workgate/config/settings.py": {
       "num_branches": 44,
       "num_statements": 290,
       "percent_covered": 98.203593
     },
-    "src/local_shell_mcp/config/surface.py": {
+    "src/workgate/config/surface.py": {
       "num_branches": 54,
       "num_statements": 142,
       "percent_covered": 92.857143
     },
-    "src/local_shell_mcp/executors/http/app.py": {
+    "src/workgate/executors/http/app.py": {
       "num_branches": 2,
       "num_statements": 41,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/executors/http/errors.py": {
+    "src/workgate/executors/http/errors.py": {
       "num_branches": 0,
       "num_statements": 20,
       "percent_covered": 95.0
     },
-    "src/local_shell_mcp/executors/http/invocations.py": {
+    "src/workgate/executors/http/invocations.py": {
       "num_branches": 0,
       "num_statements": 19,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/executors/http/tool_routes.py": {
+    "src/workgate/executors/http/tool_routes.py": {
       "num_branches": 12,
       "num_statements": 55,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/executors/mcp/__init__.py": {
+    "src/workgate/executors/mcp/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/executors/mcp/app.py": {
+    "src/workgate/executors/mcp/app.py": {
       "num_branches": 16,
       "num_statements": 72,
       "percent_covered": 92.045455
     },
-    "src/local_shell_mcp/executors/mcp/instructions.py": {
+    "src/workgate/executors/mcp/instructions.py": {
       "num_branches": 0,
       "num_statements": 1,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/executors/mcp/session_limits.py": {
+    "src/workgate/executors/mcp/session_limits.py": {
       "num_branches": 14,
       "num_statements": 42,
       "percent_covered": 94.642857
     },
-    "src/local_shell_mcp/executors/mcp/transport_security.py": {
+    "src/workgate/executors/mcp/transport_security.py": {
       "num_branches": 12,
       "num_statements": 38,
       "percent_covered": 90.0
     },
-    "src/local_shell_mcp/executors/mcp/watchdogs.py": {
+    "src/workgate/executors/mcp/watchdogs.py": {
       "num_branches": 16,
       "num_statements": 59,
       "percent_covered": 92.0
     },
-    "src/local_shell_mcp/http/__init__.py": {
+    "src/workgate/http/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/http/downloads.py": {
+    "src/workgate/http/downloads.py": {
       "num_branches": 8,
       "num_statements": 45,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/http/health.py": {
+    "src/workgate/http/health.py": {
       "num_branches": 2,
       "num_statements": 18,
       "percent_covered": 90.0
     },
-    "src/local_shell_mcp/http/public_routes.py": {
+    "src/workgate/http/public_routes.py": {
       "num_branches": 0,
       "num_statements": 6,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/http/request_limits.py": {
+    "src/workgate/http/request_limits.py": {
       "num_branches": 28,
       "num_statements": 93,
       "percent_covered": 87.603306
     },
-    "src/local_shell_mcp/main.py": {
+    "src/workgate/main.py": {
       "num_branches": 8,
       "num_statements": 63,
       "percent_covered": 90.140845
     },
-    "src/local_shell_mcp/oauth/__init__.py": {
+    "src/workgate/oauth/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/core/__init__.py": {
+    "src/workgate/oauth/core/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/core/client_store.py": {
+    "src/workgate/oauth/core/client_store.py": {
       "num_branches": 22,
       "num_statements": 66,
       "percent_covered": 78.409091
     },
-    "src/local_shell_mcp/oauth/core/context.py": {
+    "src/workgate/oauth/core/context.py": {
       "num_branches": 6,
       "num_statements": 26,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/core/models.py": {
+    "src/workgate/oauth/core/models.py": {
       "num_branches": 0,
       "num_statements": 28,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/core/requests.py": {
+    "src/workgate/oauth/core/requests.py": {
       "num_branches": 0,
       "num_statements": 49,
       "percent_covered": 95.918367
     },
-    "src/local_shell_mcp/oauth/core/scopes.py": {
+    "src/workgate/oauth/core/scopes.py": {
       "num_branches": 4,
       "num_statements": 24,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/core/security.py": {
+    "src/workgate/oauth/core/security.py": {
       "num_branches": 8,
       "num_statements": 37,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/core/service.py": {
+    "src/workgate/oauth/core/service.py": {
       "num_branches": 94,
       "num_statements": 291,
       "percent_covered": 90.649351
     },
-    "src/local_shell_mcp/oauth/core/urls.py": {
+    "src/workgate/oauth/core/urls.py": {
       "num_branches": 2,
       "num_statements": 19,
       "percent_covered": 90.47619
     },
-    "src/local_shell_mcp/oauth/http/__init__.py": {
+    "src/workgate/oauth/http/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/http/auth.py": {
+    "src/workgate/oauth/http/auth.py": {
       "num_branches": 8,
       "num_statements": 38,
       "percent_covered": 78.26087
     },
-    "src/local_shell_mcp/oauth/http/authorization.py": {
+    "src/workgate/oauth/http/authorization.py": {
       "num_branches": 10,
       "num_statements": 60,
       "percent_covered": 90.0
     },
-    "src/local_shell_mcp/oauth/http/metadata.py": {
+    "src/workgate/oauth/http/metadata.py": {
       "num_branches": 2,
       "num_statements": 19,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/http/middleware.py": {
+    "src/workgate/oauth/http/middleware.py": {
       "num_branches": 6,
       "num_statements": 38,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/http/registration.py": {
+    "src/workgate/oauth/http/registration.py": {
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/http/requests.py": {
+    "src/workgate/oauth/http/requests.py": {
       "num_branches": 20,
       "num_statements": 66,
       "percent_covered": 86.046512
     },
-    "src/local_shell_mcp/oauth/http/responses.py": {
+    "src/workgate/oauth/http/responses.py": {
       "num_branches": 2,
       "num_statements": 14,
       "percent_covered": 93.75
     },
-    "src/local_shell_mcp/oauth/http/routes.py": {
+    "src/workgate/oauth/http/routes.py": {
       "num_branches": 0,
       "num_statements": 9,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/http/tokens.py": {
+    "src/workgate/oauth/http/tokens.py": {
       "num_branches": 2,
       "num_statements": 16,
       "percent_covered": 94.444444
     },
-    "src/local_shell_mcp/oauth/protocol/__init__.py": {
+    "src/workgate/oauth/protocol/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/oauth/protocol/adapters.py": {
+    "src/workgate/oauth/protocol/adapters.py": {
       "num_branches": 2,
       "num_statements": 26,
       "percent_covered": 75.0
     },
-    "src/local_shell_mcp/oauth/protocol/bearer.py": {
+    "src/workgate/oauth/protocol/bearer.py": {
       "num_branches": 0,
       "num_statements": 25,
       "percent_covered": 92.0
     },
-    "src/local_shell_mcp/oauth/protocol/token_codec.py": {
+    "src/workgate/oauth/protocol/token_codec.py": {
       "num_branches": 2,
       "num_statements": 17,
       "percent_covered": 94.736842
     },
-    "src/local_shell_mcp/ops/__init__.py": {
+    "src/workgate/ops/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/ops/agent.py": {
+    "src/workgate/ops/agent.py": {
       "num_branches": 32,
       "num_statements": 101,
       "percent_covered": 82.706767
     },
-    "src/local_shell_mcp/ops/downloads.py": {
+    "src/workgate/ops/downloads.py": {
       "num_branches": 44,
       "num_statements": 157,
       "percent_covered": 88.059701
     },
-    "src/local_shell_mcp/ops/files.py": {
+    "src/workgate/ops/files.py": {
       "num_branches": 220,
       "num_statements": 549,
       "percent_covered": 82.054616
     },
-    "src/local_shell_mcp/ops/image.py": {
+    "src/workgate/ops/image.py": {
       "num_branches": 36,
       "num_statements": 98,
       "percent_covered": 91.044776
     },
-    "src/local_shell_mcp/jobs/runtime.py": {
+    "src/workgate/jobs/runtime.py": {
       "num_branches": 220,
       "num_statements": 846,
       "percent_covered": 83.58349
     },
-    "src/local_shell_mcp/ops/patch/__init__.py": {
+    "src/workgate/ops/patch/__init__.py": {
       "num_branches": 12,
       "num_statements": 67,
       "percent_covered": 84.810127
     },
-    "src/local_shell_mcp/ops/patch/envelope.py": {
+    "src/workgate/ops/patch/envelope.py": {
       "num_branches": 110,
       "num_statements": 206,
       "percent_covered": 97.468354
     },
-    "src/local_shell_mcp/ops/read.py": {
+    "src/workgate/ops/read.py": {
       "num_branches": 8,
       "num_statements": 29,
       "percent_covered": 94.594595
     },
-    "src/local_shell_mcp/ops/remote.py": {
+    "src/workgate/ops/remote.py": {
       "num_branches": 14,
       "num_statements": 34,
       "percent_covered": 56.25
     },
-    "src/local_shell_mcp/ops/search.py": {
+    "src/workgate/ops/search.py": {
       "num_branches": 158,
       "num_statements": 369,
       "percent_covered": 44.781784
     },
-    "src/local_shell_mcp/ops/secret_scan.py": {
+    "src/workgate/ops/secret_scan.py": {
       "num_branches": 50,
       "num_statements": 117,
       "percent_covered": 82.634731
     },
-    "src/local_shell_mcp/ops/session.py": {
+    "src/workgate/ops/session.py": {
       "num_branches": 24,
       "num_statements": 84,
       "percent_covered": 78.703704
     },
-    "src/local_shell_mcp/ops/shell.py": {
+    "src/workgate/ops/shell.py": {
       "num_branches": 128,
       "num_statements": 396,
       "percent_covered": 88.167939
     },
-    "src/local_shell_mcp/ops/todo.py": {
+    "src/workgate/ops/todo.py": {
       "num_branches": 22,
       "num_statements": 74,
       "percent_covered": 84.375
     },
-    "src/local_shell_mcp/ops/transfer.py": {
+    "src/workgate/ops/transfer.py": {
       "num_branches": 188,
       "num_statements": 542,
       "percent_covered": 76.712329
     },
-    "src/local_shell_mcp/ops/utils/__init__.py": {
+    "src/workgate/ops/utils/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/ops/utils/download_snapshot.py": {
+    "src/workgate/ops/utils/download_snapshot.py": {
       "num_branches": 32,
       "num_statements": 135,
       "percent_covered": 81.437126
     },
-    "src/local_shell_mcp/ops/utils/download_store.py": {
+    "src/workgate/ops/utils/download_store.py": {
       "num_branches": 50,
       "num_statements": 172,
       "percent_covered": 86.486486
     },
-    "src/local_shell_mcp/ops/utils/path.py": {
+    "src/workgate/ops/utils/path.py": {
       "num_branches": 32,
       "num_statements": 93,
       "percent_covered": 85.6
     },
-    "src/local_shell_mcp/ops/utils/remote_session.py": {
+    "src/workgate/ops/utils/remote_session.py": {
       "num_branches": 22,
       "num_statements": 48,
       "percent_covered": 82.857143
     },
-    "src/local_shell_mcp/ops/utils/session_copy.py": {
+    "src/workgate/ops/utils/session_copy.py": {
       "num_branches": 76,
       "num_statements": 225,
       "percent_covered": 84.717608
     },
-    "src/local_shell_mcp/ops/utils/temp_file.py": {
+    "src/workgate/ops/utils/temp_file.py": {
       "num_branches": 0,
       "num_statements": 11,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/ops/version.py": {
+    "src/workgate/tools/ops/version.py": {
       "num_branches": 0,
       "num_statements": 4,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/ops/workspace_connector.py": {
+    "src/workgate/tools/ops/workspace_connector.py": {
       "num_branches": 8,
       "num_statements": 45,
       "percent_covered": 64.150943
     },
-    "src/local_shell_mcp/remote/__init__.py": {
+    "src/workgate/remote/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote/bundle.py": {
+    "src/workgate/remote/bundle.py": {
       "num_branches": 10,
       "num_statements": 56,
       "percent_covered": 93.939394
     },
-    "src/local_shell_mcp/remote/constants.py": {
+    "src/workgate/remote/constants.py": {
       "num_branches": 0,
       "num_statements": 8,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote/http.py": {
+    "src/workgate/remote/http.py": {
       "num_branches": 6,
       "num_statements": 65,
       "percent_covered": 76.056338
     },
-    "src/local_shell_mcp/remote/manager.py": {
+    "src/workgate/remote/manager.py": {
       "num_branches": 130,
       "num_statements": 463,
       "percent_covered": 79.595278
     },
-    "src/local_shell_mcp/remote/responses.py": {
+    "src/workgate/remote/responses.py": {
       "num_branches": 0,
       "num_statements": 6,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote/service.py": {
+    "src/workgate/remote/service.py": {
       "num_branches": 0,
       "num_statements": 13,
       "percent_covered": 92.307692
     },
-    "src/local_shell_mcp/remote/tool_specs.py": {
+    "src/workgate/remote/tool_specs.py": {
       "num_branches": 0,
       "num_statements": 15,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote_worker/__init__.py": {
+    "src/workgate/remote_worker/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote_worker/__main__.py": {
+    "src/workgate/remote_worker/__main__.py": {
       "num_branches": 0,
       "num_statements": 1,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote_worker/compat.py": {
+    "src/workgate/remote_worker/compat.py": {
       "num_branches": 98,
       "num_statements": 260,
       "percent_covered": 72.905028
     },
-    "src/local_shell_mcp/remote_worker/dispatch.py": {
+    "src/workgate/remote_worker/dispatch.py": {
       "num_branches": 4,
       "num_statements": 154,
       "percent_covered": 70.253165
     },
-    "src/local_shell_mcp/remote_worker/lifecycle.py": {
+    "src/workgate/remote_worker/lifecycle.py": {
       "num_branches": 46,
       "num_statements": 151,
       "percent_covered": 80.203046
     },
-    "src/local_shell_mcp/remote_worker/runtime.py": {
+    "src/workgate/remote_worker/runtime.py": {
       "num_branches": 94,
       "num_statements": 289,
       "percent_covered": 80.939948
     },
-    "src/local_shell_mcp/remote_worker/worker.py": {
+    "src/workgate/remote_worker/worker.py": {
       "num_branches": 86,
       "num_statements": 354,
       "percent_covered": 76.363636
     },
-    "src/local_shell_mcp/schemas/__init__.py": {
+    "src/workgate/schemas/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/__init__.py": {
+    "src/workgate/schemas/input_models/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/agent.py": {
+    "src/workgate/schemas/input_models/agent.py": {
       "num_branches": 0,
       "num_statements": 9,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/downloads.py": {
+    "src/workgate/schemas/input_models/downloads.py": {
       "num_branches": 0,
       "num_statements": 9,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/files.py": {
+    "src/workgate/schemas/input_models/files.py": {
       "num_branches": 0,
       "num_statements": 22,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/image.py": {
+    "src/workgate/schemas/input_models/image.py": {
       "num_branches": 0,
       "num_statements": 3,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/schemas/input_models/jobs.py": {
+    "src/workgate/tools/schemas/input_models/jobs.py": {
       "num_branches": 0,
       "num_statements": 12,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/patch.py": {
+    "src/workgate/schemas/input_models/patch.py": {
       "num_branches": 0,
       "num_statements": 4,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/read.py": {
+    "src/workgate/schemas/input_models/read.py": {
       "num_branches": 0,
       "num_statements": 3,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/remote.py": {
+    "src/workgate/schemas/input_models/remote.py": {
       "num_branches": 0,
       "num_statements": 39,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/search.py": {
+    "src/workgate/schemas/input_models/search.py": {
       "num_branches": 0,
       "num_statements": 15,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/secret_scan.py": {
+    "src/workgate/schemas/input_models/secret_scan.py": {
       "num_branches": 0,
       "num_statements": 5,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/session.py": {
+    "src/workgate/schemas/input_models/session.py": {
       "num_branches": 0,
       "num_statements": 13,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/shell.py": {
+    "src/workgate/schemas/input_models/shell.py": {
       "num_branches": 0,
       "num_statements": 18,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/todo.py": {
+    "src/workgate/schemas/input_models/todo.py": {
       "num_branches": 0,
       "num_statements": 4,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/transfer.py": {
+    "src/workgate/schemas/input_models/transfer.py": {
       "num_branches": 0,
       "num_statements": 16,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/schemas/input_models/workspace_connector.py": {
+    "src/workgate/tools/schemas/input_models/workspace_connector.py": {
       "num_branches": 0,
       "num_statements": 4,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/__init__.py": {
+    "src/workgate/schemas/result_models/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/agent.py": {
+    "src/workgate/schemas/result_models/agent.py": {
       "num_branches": 0,
       "num_statements": 38,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/downloads.py": {
+    "src/workgate/schemas/result_models/downloads.py": {
       "num_branches": 0,
       "num_statements": 23,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/files.py": {
+    "src/workgate/schemas/result_models/files.py": {
       "num_branches": 0,
       "num_statements": 82,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/image.py": {
+    "src/workgate/schemas/result_models/image.py": {
       "num_branches": 0,
       "num_statements": 9,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/jobs.py": {
+    "src/workgate/schemas/result_models/jobs.py": {
       "num_branches": 0,
       "num_statements": 43,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/patch.py": {
+    "src/workgate/schemas/result_models/patch.py": {
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/read.py": {
+    "src/workgate/schemas/result_models/read.py": {
       "num_branches": 0,
       "num_statements": 10,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/remote.py": {
+    "src/workgate/schemas/result_models/remote.py": {
       "num_branches": 0,
       "num_statements": 53,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/search.py": {
+    "src/workgate/schemas/result_models/search.py": {
       "num_branches": 0,
       "num_statements": 47,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/secret_scan.py": {
+    "src/workgate/schemas/result_models/secret_scan.py": {
       "num_branches": 0,
       "num_statements": 9,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/session.py": {
+    "src/workgate/schemas/result_models/session.py": {
       "num_branches": 0,
       "num_statements": 45,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/shell.py": {
+    "src/workgate/schemas/result_models/shell.py": {
       "num_branches": 0,
       "num_statements": 69,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/todo.py": {
+    "src/workgate/schemas/result_models/todo.py": {
       "num_branches": 0,
       "num_statements": 11,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/transfer.py": {
+    "src/workgate/schemas/result_models/transfer.py": {
       "num_branches": 0,
       "num_statements": 63,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/schemas/result_models/version.py": {
+    "src/workgate/tools/schemas/result_models/version.py": {
       "num_branches": 0,
       "num_statements": 6,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/schemas/result_models/workspace_connector.py": {
+    "src/workgate/tools/schemas/result_models/workspace_connector.py": {
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/terminal/bridge.py": {
+    "src/workgate/terminal/bridge.py": {
       "num_branches": 86,
       "num_statements": 311,
       "percent_covered": 76.574307
     },
-    "src/local_shell_mcp/terminal/conpty.py": {
+    "src/workgate/terminal/conpty.py": {
       "num_branches": 122,
       "num_statements": 414,
       "percent_covered": 73.320896
     },
-    "src/local_shell_mcp/terminal/tmux.py": {
+    "src/workgate/terminal/tmux.py": {
       "num_branches": 22,
       "num_statements": 68,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tool_session/__init__.py": {
+    "src/workgate/tool_session/__init__.py": {
       "num_branches": 0,
       "num_statements": 2,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tool_session/selectors.py": {
+    "src/workgate/tool_session/selectors.py": {
       "num_branches": 40,
       "num_statements": 84,
       "percent_covered": 85.483871
     },
-    "src/local_shell_mcp/tool_session/store.py": {
+    "src/workgate/tool_session/store.py": {
       "num_branches": 28,
       "num_statements": 140,
       "percent_covered": 85.714286
     },
-    "src/local_shell_mcp/tools/__init__.py": {
+    "src/workgate/tools/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/contracts.py": {
+    "src/workgate/tools/contracts.py": {
       "num_branches": 0,
       "num_statements": 28,
       "percent_covered": 92.857143
     },
-    "src/local_shell_mcp/tools/declarative.py": {
+    "src/workgate/tools/declarative.py": {
       "num_branches": 32,
       "num_statements": 170,
       "percent_covered": 96.039604
     },
-    "src/local_shell_mcp/tools/local_handlers.py": {
+    "src/workgate/tools/local_handlers.py": {
       "num_branches": 6,
       "num_statements": 21,
       "percent_covered": 92.592593
     },
-    "src/local_shell_mcp/tools/registry/__init__.py": {
+    "src/workgate/tools/registry/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/agent.py": {
+    "src/workgate/tools/registry/agent.py": {
       "num_branches": 2,
       "num_statements": 51,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/downloads.py": {
+    "src/workgate/tools/registry/downloads.py": {
       "num_branches": 0,
       "num_statements": 26,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/files.py": {
+    "src/workgate/tools/registry/files.py": {
       "num_branches": 0,
       "num_statements": 37,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/image.py": {
+    "src/workgate/tools/registry/image.py": {
       "num_branches": 0,
       "num_statements": 13,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/jobs.py": {
+    "src/workgate/tools/registry/jobs.py": {
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/patch.py": {
+    "src/workgate/tools/registry/patch.py": {
       "num_branches": 0,
       "num_statements": 16,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/read.py": {
+    "src/workgate/tools/registry/read.py": {
       "num_branches": 0,
       "num_statements": 16,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/remote.py": {
+    "src/workgate/tools/registry/remote.py": {
       "num_branches": 6,
       "num_statements": 65,
       "percent_covered": 81.690141
     },
-    "src/local_shell_mcp/tools/registry/search.py": {
+    "src/workgate/tools/registry/search.py": {
       "num_branches": 0,
       "num_statements": 28,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/secret_scan.py": {
+    "src/workgate/tools/registry/secret_scan.py": {
       "num_branches": 0,
       "num_statements": 16,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/session.py": {
+    "src/workgate/tools/registry/session.py": {
       "num_branches": 0,
       "num_statements": 26,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/shell.py": {
+    "src/workgate/tools/registry/shell.py": {
       "num_branches": 0,
       "num_statements": 37,
       "percent_covered": 97.297297
     },
-    "src/local_shell_mcp/tools/registry/todo.py": {
+    "src/workgate/tools/registry/todo.py": {
       "num_branches": 0,
       "num_statements": 16,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/transfer.py": {
+    "src/workgate/tools/registry/transfer.py": {
       "num_branches": 0,
       "num_statements": 59,
       "percent_covered": 98.305085
     },
-    "src/local_shell_mcp/tools/registry/version.py": {
+    "src/workgate/tools/registry/version.py": {
       "num_branches": 0,
       "num_statements": 10,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tools/registry/workspace_connector.py": {
+    "src/workgate/tools/registry/workspace_connector.py": {
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/ui/http/audit.py": {
+    "src/workgate/ui/http/audit.py": {
       "num_branches": 86,
       "num_statements": 249,
       "percent_covered": 81.791045
     },
-    "src/local_shell_mcp/ui/http/dashboard.py": {
+    "src/workgate/ui/http/dashboard.py": {
       "num_branches": 72,
       "num_statements": 174,
       "percent_covered": 77.642276
     },
-    "src/local_shell_mcp/ui/http/files.py": {
+    "src/workgate/ui/http/files.py": {
       "num_branches": 112,
       "num_statements": 363,
       "percent_covered": 85.263158
     },
-    "src/local_shell_mcp/ui/http/image_preview.py": {
+    "src/workgate/ui/http/image_preview.py": {
       "num_branches": 16,
       "num_statements": 47,
       "percent_covered": 77.777778
     },
-    "src/local_shell_mcp/ui/http/opentui.py": {
+    "src/workgate/ui/http/opentui.py": {
       "num_branches": 58,
       "num_statements": 255,
       "percent_covered": 45.047923
     },
-    "src/local_shell_mcp/ui/http/remote_files.py": {
+    "src/workgate/ui/http/remote_files.py": {
       "num_branches": 76,
       "num_statements": 257,
       "percent_covered": 85.585586
     },
-    "src/local_shell_mcp/ui/http/remotes.py": {
+    "src/workgate/ui/http/remotes.py": {
       "num_branches": 60,
       "num_statements": 195,
       "percent_covered": 86.666667
     },
-    "src/local_shell_mcp/ui/http/routes.py": {
+    "src/workgate/ui/http/routes.py": {
       "num_branches": 12,
       "num_statements": 75,
       "percent_covered": 90.804598
     },
-    "src/local_shell_mcp/ui/http/terminals.py": {
+    "src/workgate/ui/http/terminals.py": {
       "num_branches": 212,
       "num_statements": 689,
       "percent_covered": 77.358491
     },
-    "src/local_shell_mcp/ui/http/todos.py": {
+    "src/workgate/ui/http/todos.py": {
       "num_branches": 36,
       "num_statements": 136,
       "percent_covered": 91.860465
     },
-    "src/local_shell_mcp/ui/image_preview.py": {
+    "src/workgate/ui/image_preview.py": {
       "num_branches": 6,
       "num_statements": 43,
       "percent_covered": 89.795918
     },
-    "src/local_shell_mcp/ui/runtime.py": {
+    "src/workgate/ui/runtime.py": {
       "num_branches": 38,
       "num_statements": 121,
       "percent_covered": 82.389937
     },
-    "src/local_shell_mcp/ui/security.py": {
+    "src/workgate/ui/security.py": {
       "num_branches": 14,
       "num_statements": 75,
       "percent_covered": 64.044944
     },
-    "src/local_shell_mcp/utils/__init__.py": {
+    "src/workgate/utils/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/utils/path_locks.py": {
+    "src/workgate/utils/path_locks.py": {
       "num_branches": 12,
       "num_statements": 59,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/utils/private_files.py": {
+    "src/workgate/utils/private_files.py": {
       "num_branches": 6,
       "num_statements": 67,
       "percent_covered": 91.780822
     },
-    "src/local_shell_mcp/utils/serialization.py": {
+    "src/workgate/utils/serialization.py": {
       "num_branches": 18,
       "num_statements": 26,
       "percent_covered": 72.727273
     },
-    "src/local_shell_mcp/version.py": {
+    "src/workgate/version.py": {
       "num_branches": 2,
       "num_statements": 17,
       "percent_covered": 78.947368
@@ -873,42 +873,42 @@
   },
   "policy": {
     "adapter_files": [
-      "src/local_shell_mcp/remote/http.py",
-      "src/local_shell_mcp/remote/responses.py",
-      "src/local_shell_mcp/remote/service.py",
-      "src/local_shell_mcp/tools/local_handlers.py"
+      "src/workgate/remote/http.py",
+      "src/workgate/remote/responses.py",
+      "src/workgate/remote/service.py",
+      "src/workgate/tools/local_handlers.py"
     ],
     "adapter_prefixes": [
-      "src/local_shell_mcp/executors/",
-      "src/local_shell_mcp/http/",
-      "src/local_shell_mcp/schemas/",
-      "src/local_shell_mcp/tools/registry/",
-      "src/local_shell_mcp/ui/http/"
+      "src/workgate/executors/",
+      "src/workgate/http/",
+      "src/workgate/schemas/",
+      "src/workgate/tools/registry/",
+      "src/workgate/ui/http/"
     ],
     "critical_existing_drift_percent": 0.05,
     "critical_files": [
-      "src/local_shell_mcp/agent_bridge/auth.py",
-      "src/local_shell_mcp/agent_bridge/auth_store.py",
-      "src/local_shell_mcp/agent_bridge/redaction.py",
-      "src/local_shell_mcp/config/settings.py",
-      "src/local_shell_mcp/jobs/runtime.py",
-      "src/local_shell_mcp/ops/files.py",
-      "src/local_shell_mcp/ops/patch/envelope.py",
-      "src/local_shell_mcp/ops/secret_scan.py",
-      "src/local_shell_mcp/ops/shell.py",
-      "src/local_shell_mcp/ops/transfer.py",
-      "src/local_shell_mcp/remote/manager.py",
-      "src/local_shell_mcp/remote/transfer_gateway.py",
-      "src/local_shell_mcp/tool_session/store.py",
-      "src/local_shell_mcp/ui/security.py",
-      "src/local_shell_mcp/utils/path_locks.py",
-      "src/local_shell_mcp/utils/private_files.py"
+      "src/workgate/agent_bridge/auth.py",
+      "src/workgate/agent_bridge/auth_store.py",
+      "src/workgate/agent_bridge/redaction.py",
+      "src/workgate/config/settings.py",
+      "src/workgate/jobs/runtime.py",
+      "src/workgate/ops/files.py",
+      "src/workgate/ops/patch/envelope.py",
+      "src/workgate/ops/secret_scan.py",
+      "src/workgate/ops/shell.py",
+      "src/workgate/ops/transfer.py",
+      "src/workgate/remote/manager.py",
+      "src/workgate/remote/transfer_gateway.py",
+      "src/workgate/tool_session/store.py",
+      "src/workgate/ui/security.py",
+      "src/workgate/utils/path_locks.py",
+      "src/workgate/utils/private_files.py"
     ],
     "critical_prefixes": [
-      "src/local_shell_mcp/audit/",
-      "src/local_shell_mcp/oauth/",
-      "src/local_shell_mcp/remote_worker/",
-      "src/local_shell_mcp/terminal/"
+      "src/workgate/audit/",
+      "src/workgate/oauth/",
+      "src/workgate/remote_worker/",
+      "src/workgate/terminal/"
     ],
     "default_existing_drift_percent": 1.0,
     "new_adapter_min_percent": 60.0,

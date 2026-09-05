@@ -16,12 +16,12 @@ const reportedAlerts: DashboardAlert[] = [
   {
     severity: "error",
     title: "Job pr96-coverage-fix failed",
-    detail: "export PYTHONPATH=/workspace/lsm-transfer-clean-test/src",
+    detail: "export PYTHONPATH=/workspace/workgate-transfer-clean-test/src",
   },
   {
     severity: "error",
-    title: "Job lsm-transfer-clean-full-tests failed",
-    detail: "export PYTHONPATH=/workspace/lsm-transfer-clean-test/src",
+    title: "Job workgate-transfer-clean-full-tests failed",
+    detail: "export PYTHONPATH=/workspace/workgate-transfer-clean-test/src",
   },
   {
     severity: "warning",

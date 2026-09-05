@@ -2,17 +2,17 @@ import asyncio
 
 import pytest
 
-import local_shell_mcp.ops.bash as shell_ops
-import local_shell_mcp.ops.session as session_ops
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.schemas.result_models.jobs import JobStartOutput
-from local_shell_mcp.schemas.result_models.shell import (
+import workgate.ops.bash as shell_ops
+import workgate.ops.session as session_ops
+from tests.helpers import mcp_structured, python_shell_command
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.schemas.result_models.jobs import JobStartOutput
+from workgate.schemas.result_models.shell import (
     RunShellCommandOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from tests.helpers import mcp_structured, python_shell_command
+from workgate.tool_session.store import get_tool_session_store
 
 
 def _create_session(workdir: str = ".") -> str:
@@ -25,7 +25,7 @@ def _create_session(workdir: str = ".") -> str:
 async def test_shell_execution_runs_bounded_command_in_session_workdir(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     session_dir = tmp_path / "project"
     session_dir.mkdir()
@@ -50,7 +50,7 @@ async def test_shell_execution_runs_bounded_command_in_session_workdir(
 
 @pytest.mark.asyncio
 async def test_foreground_shell_blocks_session_teardown(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     session_id = _create_session()
     command_entered = asyncio.Event()
@@ -95,7 +95,7 @@ async def test_foreground_shell_blocks_session_teardown(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_foreground_python_blocks_session_teardown(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     session_id = _create_session()
     command_entered = asyncio.Event()
@@ -144,7 +144,7 @@ async def test_foreground_python_blocks_session_teardown(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_shell_execution_rejects_cwd_escape(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "project").mkdir()
     (tmp_path / "other").mkdir()
@@ -177,7 +177,7 @@ async def test_shell_execution_routes_async_to_session_job(monkeypatch):
 
     class FakeStore:
         def touch_session(self, session_id):
-            from local_shell_mcp.tool_session.store import AgentSession
+            from workgate.tool_session.store import AgentSession
 
             return AgentSession(
                 session_id=session_id,
@@ -190,7 +190,7 @@ async def test_shell_execution_routes_async_to_session_job(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_start_execute", fake_job_start
+        "workgate.jobs.runtime.job_start_execute", fake_job_start
     )
     monkeypatch.setattr(
         shell_ops, "get_tool_session_store", lambda: FakeStore()
@@ -216,7 +216,7 @@ async def test_shell_execution_routes_async_to_session_job(monkeypatch):
 async def test_shell_execution_routes_pty_to_persistent_shell(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     session_id = _create_session()
     calls = []
@@ -253,7 +253,7 @@ async def test_shell_execution_routes_pty_to_persistent_shell(
 
 @pytest.mark.asyncio
 async def test_pty_registration_failure_rolls_back_shell(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     session_id = _create_session()
     killed: list[str] = []
@@ -285,8 +285,8 @@ async def test_pty_registration_failure_rolls_back_shell(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_shell_execution_is_exposed_in_mcp(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     get_tool_session_store().clear()
 

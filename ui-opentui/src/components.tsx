@@ -37,7 +37,7 @@ export function TopNav({
         backgroundColor: theme.canvas,
       }}
     >
-      <text fg={theme.text} attributes={1} content={compact ? "LSM" : "LOCAL SHELL"} />
+      <text fg={theme.text} attributes={1} content={compact ? "Workgate" : "WORKGATE"} />
       {!compact && <text fg={theme.cyan} attributes={1} content=" MCP" />}
       <text fg={theme.faint} content={narrow ? " " : "  /  "} />
       {SCREENS.map((screen) => {
@@ -62,7 +62,7 @@ export function TopNav({
         )
       })}
       <box style={{ flexGrow: 1 }} />
-      {version && width >= 72 && <text fg={theme.faint} content={`LSM v${version}`} />}
+      {version && width >= 72 && <text fg={theme.faint} content={`Workgate v${version}`} />}
     </box>
   )
 }

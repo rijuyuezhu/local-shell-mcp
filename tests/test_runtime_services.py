@@ -2,46 +2,46 @@ import asyncio
 
 import pytest
 
-import local_shell_mcp.composition.services as composition_services
-import local_shell_mcp.terminal.bridge as terminal_bridge
-import local_shell_mcp.terminal.conpty as terminal_conpty
-from local_shell_mcp.composition.services import (
+import workgate.composition.services as composition_services
+import workgate.terminal.bridge as terminal_bridge
+import workgate.terminal.conpty as terminal_conpty
+from workgate.composition.services import (
     build_runtime_services,
     install_runtime_services,
 )
-from local_shell_mcp.config.settings import Settings
-from local_shell_mcp.executors.runtime import build_controller_runtime
-from local_shell_mcp.jobs.managed import (
+from workgate.config.settings import Settings
+from workgate.executors.runtime import build_controller_runtime
+from workgate.jobs.managed import (
     ManagedJobsRuntime,
     configure_managed_jobs_runtime,
     managed_jobs_runtime,
 )
-from local_shell_mcp.oauth.core.state import (
+from workgate.oauth.core.state import (
     OAuthState,
     configure_oauth_state,
     oauth_state,
 )
-from local_shell_mcp.ops.utils.session_copy import SESSION_COPY_MANAGED_KIND
-from local_shell_mcp.persistence import (
+from workgate.ops.utils.session_copy import SESSION_COPY_MANAGED_KIND
+from workgate.persistence import (
     FileStateStore,
     configure_state_store,
     get_state_store,
 )
-from local_shell_mcp.remote.manager import (
+from workgate.remote.manager import (
     RemoteManager,
     configure_remote_manager,
     remote_manager,
 )
-from local_shell_mcp.remote_worker.runtime_composition import (
+from workgate.remote_worker.runtime_composition import (
     build_worker_runtime,
 )
-from local_shell_mcp.terminal.runtime import build_terminal_runtime
-from local_shell_mcp.tool_session import (
+from workgate.terminal.runtime import build_terminal_runtime
+from workgate.tool_session import (
     configure_tool_session_store,
     get_tool_session_store,
 )
-from local_shell_mcp.tool_session.store import ToolSessionStore
-from local_shell_mcp.ui.http.live_state import (
+from workgate.tool_session.store import ToolSessionStore
+from workgate.ui.http.live_state import (
     build_human_ui_runtime,
     human_ui_runtime,
 )
@@ -279,7 +279,7 @@ async def test_controller_runtime_remote_binding_failure_closes_remote_manager(
         raise RuntimeError("remote binding failed")
 
     monkeypatch.setattr(
-        "local_shell_mcp.executors.runtime.configure_remote_manager",
+        "workgate.executors.runtime.configure_remote_manager",
         fail_remote_binding,
     )
     try:
@@ -718,7 +718,7 @@ async def test_controller_runtime_managed_jobs_binding_failure_closes_owner(
         raise RuntimeError("managed jobs binding failed")
 
     monkeypatch.setattr(
-        "local_shell_mcp.executors.runtime.configure_managed_jobs_runtime",
+        "workgate.executors.runtime.configure_managed_jobs_runtime",
         fail_managed_jobs_binding,
     )
 

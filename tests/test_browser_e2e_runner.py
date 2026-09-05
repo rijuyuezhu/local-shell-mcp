@@ -10,7 +10,7 @@ _RUNNER_PATH = _REPO_ROOT / "scripts" / "testing" / "run-browser-e2e.py"
 
 def _load_runner() -> Any:
     spec = importlib.util.spec_from_file_location(
-        "local_shell_mcp_browser_e2e_runner", _RUNNER_PATH
+        "workgate_browser_e2e_runner", _RUNNER_PATH
     )
     assert spec is not None
     assert spec.loader is not None
@@ -51,8 +51,8 @@ def test_browser_e2e_runner_forwards_contract_and_exit_status(
     ]
     assert observed["check"] is False
     artifacts = tmp_path / "relative-artifacts"
-    assert observed["env"]["LOCAL_SHELL_MCP_BROWSER_E2E"] == "1"
-    assert observed["env"]["LOCAL_SHELL_MCP_BROWSER_ARTIFACTS"] == str(
+    assert observed["env"]["WORKGATE_BROWSER_E2E"] == "1"
+    assert observed["env"]["WORKGATE_BROWSER_ARTIFACTS"] == str(
         artifacts.resolve()
     )
     assert artifacts.is_dir()

@@ -14,8 +14,8 @@ from zipfile import ZIP_STORED
 import pytest
 from wheel.wheelfile import WheelFile
 
-from local_shell_mcp.release import platform_wheel as pw
-from local_shell_mcp.ui.contracts import (
+from workgate.release import platform_wheel as pw
+from workgate.ui.contracts import (
     POSIX_TUI_EXECUTABLE_NAME,
     WINDOWS_TUI_EXECUTABLE_NAME,
 )
@@ -33,7 +33,7 @@ def _make_wheel(
     wheel_metadata: bytes | None = None,
     payloads: dict[str, bytes] | None = None,
 ) -> Path:
-    dist_info = "local_shell_mcp-1.0.dist-info"
+    dist_info = "workgate-1.0.dist-info"
     metadata = wheel_metadata or (
         b"Wheel-Version: 1.0\n"
         b"Generator: test\n"
@@ -41,14 +41,14 @@ def _make_wheel(
         b"Tag: py3-none-any\n"
     )
     with WheelFile(path, "w") as wheel:
-        wheel.writestr("local_shell_mcp/__init__.py", b"")
+        wheel.writestr("workgate/__init__.py", b"")
         wheel.writestr(
             f"{dist_info}/METADATA",
-            b"Metadata-Version: 2.4\nName: local-shell-mcp\nVersion: 1.0\n",
+            b"Metadata-Version: 2.4\nName: workgate\nVersion: 1.0\n",
         )
         wheel.writestr(f"{dist_info}/WHEEL", metadata)
         if payloads:
-            wheel.writestr("local_shell_mcp/ui_runtime/", b"")
+            wheel.writestr("workgate/ui_runtime/", b"")
         for name, data in (payloads or {}).items():
             wheel.writestr(name, data)
     return path
@@ -56,7 +56,7 @@ def _make_wheel(
 
 def _make_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
-    (repo / "src" / "local_shell_mcp").mkdir(parents=True)
+    (repo / "src" / "workgate").mkdir(parents=True)
     (repo / "ui-opentui").mkdir()
     (repo / "ui-opentui" / "bun.lock").write_text("lock", encoding="utf-8")
     return repo
@@ -83,7 +83,7 @@ def test_target_for_tag(
     assert target.system == system
     assert target.architecture == architecture
     assert target.executable_name == executable
-    assert target.payload_path == f"local_shell_mcp/ui_runtime/{executable}.gz"
+    assert target.payload_path == f"workgate/ui_runtime/{executable}.gz"
 
 
 @pytest.mark.parametrize("tag", ["", "manylinux_2_17_x86_64", "win32", "any"])
@@ -271,8 +271,8 @@ def test_compile_opentui_uses_pinned_bun_and_isolated_output(
                 command, 0, f"{pw.BUN_VERSION}\n", ""
             )
         assert env is not None
-        assert "LSM_UI_EMBED_RUNTIME" not in env
-        output = Path(env["LSM_UI_BINARY_OUTDIR"])
+        assert "WORKGATE_UI_EMBED_RUNTIME" not in env
+        output = Path(env["WORKGATE_UI_BINARY_OUTDIR"])
         output.mkdir(parents=True)
         (output / target.executable_name).write_bytes(_executable(target))
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -319,7 +319,7 @@ def test_staged_payload_is_private_and_always_cleaned(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
     target = pw.target_for_tag("linux_x86_64")
     payload = pw.deterministic_gzip(_executable(target))
-    package_root = repo / "src" / "local_shell_mcp"
+    package_root = repo / "src" / "workgate"
     lock = pw._platform_wheel_lock_path(repo)
     with (
         pytest.raises(RuntimeError, match="stop"),
@@ -339,7 +339,7 @@ def test_staged_payload_is_private_and_always_cleaned(tmp_path: Path) -> None:
 def test_staged_payload_cleans_stale_directory(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
     target = pw.target_for_tag("linux_x86_64")
-    stale = repo / "src" / "local_shell_mcp" / "ui_runtime"
+    stale = repo / "src" / "workgate" / "ui_runtime"
     stale.mkdir()
     (stale / "stale").write_text("old", encoding="utf-8")
     with pw.staged_payload(repo, target, b"payload") as path:
@@ -375,7 +375,7 @@ def test_staged_payload_rejects_timeout_and_bad_paths(tmp_path: Path) -> None:
 
 def test_staged_payload_rejects_symlink_lock_or_staging(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
-    package_root = repo / "src" / "local_shell_mcp"
+    package_root = repo / "src" / "workgate"
     target = pw.target_for_tag("linux_x86_64")
     external = tmp_path / "external"
     external.mkdir()
@@ -449,8 +449,8 @@ def test_staged_payload_does_not_remove_changed_lock(
 
 def test_inspect_wheel_rejects_packaged_build_lock(tmp_path: Path) -> None:
     path = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
-        payloads={f"local_shell_mcp/{pw._LOCK_NAME}": b"pid=123\n"},
+        tmp_path / "workgate-1.0-py3-none-any.whl",
+        payloads={f"workgate/{pw._LOCK_NAME}": b"pid=123\n"},
     )
     with pytest.raises(pw.PlatformWheelError, match="build lock"):
         pw.inspect_wheel(path, target=None)
@@ -464,7 +464,7 @@ def test_platform_wheel_lock_path_is_stable_and_external(
     first = pw._platform_wheel_lock_path(repo)
     assert first == pw._platform_wheel_lock_path(repo)
     assert first != pw._platform_wheel_lock_path(other)
-    assert first.name.startswith("local-shell-mcp-wheel-")
+    assert first.name.startswith("workgate-wheel-")
     assert repo not in first.parents
 
 
@@ -473,7 +473,7 @@ def test_rewrite_and_inspect_platform_wheel(tmp_path: Path) -> None:
     executable = _executable(target, b"real")
     payload = pw.deterministic_gzip(executable)
     universal = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        tmp_path / "workgate-1.0-py3-none-any.whl",
         payloads={target.payload_path: payload},
     )
     output, inspection = pw.rewrite_platform_wheel(
@@ -484,14 +484,14 @@ def test_rewrite_and_inspect_platform_wheel(tmp_path: Path) -> None:
         expected_payload_sha256=hashlib.sha256(payload).hexdigest(),
         expected_executable_sha256=hashlib.sha256(executable).hexdigest(),
     )
-    assert output.name == "local_shell_mcp-1.0-py3-none-linux_x86_64.whl"
+    assert output.name == "workgate-1.0-py3-none-linux_x86_64.whl"
     assert inspection.root_is_purelib is False
     assert inspection.platform_tag == "linux_x86_64"
     assert inspection.executable_size == len(executable)
     with WheelFile(output, "r") as wheel:
         assert wheel.getinfo(target.payload_path).compress_type == ZIP_STORED
         assert wheel.read(target.payload_path) == payload
-        wheel_metadata = wheel.read("local_shell_mcp-1.0.dist-info/WHEEL")
+        wheel_metadata = wheel.read("workgate-1.0.dist-info/WHEEL")
         assert b"Root-Is-Purelib: false" in wheel_metadata
         assert b"Tag: py3-none-linux_x86_64" in wheel_metadata
         assert {info.date_time for info in wheel.infolist()} == {
@@ -509,7 +509,7 @@ def test_rewrite_platform_wheel_is_byte_reproducible(tmp_path: Path) -> None:
     executable = _executable(target, b"reproducible")
     payload = pw.deterministic_gzip(executable)
     universal = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        tmp_path / "workgate-1.0-py3-none-any.whl",
         payloads={target.payload_path: payload},
     )
     outputs = []
@@ -527,7 +527,7 @@ def test_rewrite_platform_wheel_is_byte_reproducible(tmp_path: Path) -> None:
 
 
 def test_inspect_universal_wheel_requires_no_payload(tmp_path: Path) -> None:
-    universal = _make_wheel(tmp_path / "local_shell_mcp-1.0-py3-none-any.whl")
+    universal = _make_wheel(tmp_path / "workgate-1.0-py3-none-any.whl")
     inspection = pw.inspect_wheel(universal, target=None)
     assert inspection.platform_tag == "any"
     assert inspection.payload_path is None
@@ -551,7 +551,7 @@ def test_inspect_platform_wheel_rejects_extra_or_corrupt_payload(
         b"Tag: py3-none-linux_x86_64\n"
     )
     extra = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-linux_x86_64.whl",
+        tmp_path / "workgate-1.0-py3-none-linux_x86_64.whl",
         wheel_metadata=platform_metadata,
         payloads={
             target.payload_path: b"bad",
@@ -577,7 +577,7 @@ def test_inspect_platform_wheel_requires_stored_payload(tmp_path: Path) -> None:
     )
     executable = _executable(target)
     wheel = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-linux_x86_64.whl",
+        tmp_path / "workgate-1.0-py3-none-linux_x86_64.whl",
         wheel_metadata=platform_metadata,
         payloads={target.payload_path: pw.deterministic_gzip(executable)},
     )
@@ -589,7 +589,7 @@ def test_inspect_wheel_rejects_filename_metadata_disagreement(
     tmp_path: Path,
 ) -> None:
     wrong = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-linux_x86_64.whl",
+        tmp_path / "workgate-1.0-py3-none-linux_x86_64.whl",
     )
     with pytest.raises(pw.PlatformWheelError, match="disagree"):
         pw.inspect_wheel(wrong, target=pw.target_for_tag("linux_x86_64"))
@@ -613,7 +613,7 @@ def test_inspect_wheel_rejects_bad_wheel_metadata(
     message: str,
 ) -> None:
     path = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        tmp_path / "workgate-1.0-py3-none-any.whl",
         wheel_metadata=metadata,
     )
     with pytest.raises(pw.PlatformWheelError, match=message):
@@ -623,7 +623,7 @@ def test_inspect_wheel_rejects_bad_wheel_metadata(
 def test_wheel_members_rejects_invalid_archive_and_missing_metadata(
     tmp_path: Path,
 ) -> None:
-    invalid = tmp_path / "local_shell_mcp-1.0-py3-none-any.whl"
+    invalid = tmp_path / "workgate-1.0-py3-none-any.whl"
     invalid.write_bytes(b"bad")
     with pytest.raises(pw.PlatformWheelError, match="invalid wheel archive"):
         pw._wheel_members(invalid)
@@ -636,7 +636,7 @@ def test_wheel_members_rejects_invalid_archive_and_missing_metadata(
 
 def test_wheel_members_requires_each_unread_payload(tmp_path: Path) -> None:
     target = pw.target_for_tag("linux_x86_64")
-    universal = _make_wheel(tmp_path / "local_shell_mcp-1.0-py3-none-any.whl")
+    universal = _make_wheel(tmp_path / "workgate-1.0-py3-none-any.whl")
     with pytest.raises(pw.PlatformWheelError, match="unread native payload"):
         pw._wheel_members(
             universal,
@@ -652,7 +652,7 @@ def test_rewrite_does_not_read_staged_payload(
     executable = _executable(target, b"in-memory")
     payload = pw.deterministic_gzip(executable)
     universal = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        tmp_path / "workgate-1.0-py3-none-any.whl",
         payloads={target.payload_path: b"not-valid-gzip"},
     )
     original_read = pw.WheelFile.read
@@ -682,7 +682,7 @@ def test_rewrite_rejects_bad_input_and_digest_mismatch(tmp_path: Path) -> None:
     target = pw.target_for_tag("linux_x86_64")
     payload = pw.deterministic_gzip(_executable(target))
     universal = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        tmp_path / "workgate-1.0-py3-none-any.whl",
         payloads={target.payload_path: payload},
     )
     out = tmp_path / "out"
@@ -722,12 +722,12 @@ def test_rewrite_refuses_existing_output(tmp_path: Path) -> None:
     executable = _executable(target)
     payload = pw.deterministic_gzip(executable)
     universal = _make_wheel(
-        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        tmp_path / "workgate-1.0-py3-none-any.whl",
         payloads={target.payload_path: payload},
     )
     out = tmp_path / "out"
     out.mkdir()
-    expected = out / "local_shell_mcp-1.0-py3-none-linux_x86_64.whl"
+    expected = out / "workgate-1.0-py3-none-linux_x86_64.whl"
     expected.write_bytes(b"existing")
     with pytest.raises(pw.PlatformWheelError, match="already exists"):
         pw.rewrite_platform_wheel(
@@ -786,7 +786,7 @@ def test_inspect_sdist_accepts_source_and_rejects_generated_files(
     bad_payload = tmp_path / "payload.tar.gz"
     with tarfile.open(bad_payload, "w:gz") as archive:
         info = tarfile.TarInfo(
-            "project/src/local_shell_mcp/ui_runtime/local-shell-mcp-tui.gz"
+            "project/src/workgate/ui_runtime/workgate-tui.gz"
         )
         info.size = 1
         archive.addfile(info, io.BytesIO(b"x"))
@@ -794,7 +794,7 @@ def test_inspect_sdist_accepts_source_and_rejects_generated_files(
         pw.inspect_sdist(bad_payload)
     bad_generated = tmp_path / "generated.tar.gz"
     with tarfile.open(bad_generated, "w:gz") as archive:
-        info = tarfile.TarInfo("project/ui-opentui/dist/local-shell-mcp-tui")
+        info = tarfile.TarInfo("project/ui-opentui/dist/workgate-tui")
         info.size = 1
         archive.addfile(info, io.BytesIO(b"x"))
     with pytest.raises(pw.PlatformWheelError, match="generated"):
@@ -846,13 +846,13 @@ def test_build_platform_wheel_orchestrates_and_cleans_staging(
         payload_path = (
             repo
             / "src"
-            / "local_shell_mcp"
+            / "workgate"
             / "ui_runtime"
             / (f"{target.executable_name}.gz")
         )
         assert payload_path.is_file()
         return _make_wheel(
-            build_dir / "local_shell_mcp-1.0-py3-none-any.whl",
+            build_dir / "workgate-1.0-py3-none-any.whl",
             payloads={target.payload_path: payload_path.read_bytes()},
         )
 
@@ -868,7 +868,7 @@ def test_build_platform_wheel_orchestrates_and_cleans_staging(
     assert (
         inspection.executable_sha256 == hashlib.sha256(executable).hexdigest()
     )
-    assert not (repo / "src" / "local_shell_mcp" / "ui_runtime").exists()
+    assert not (repo / "src" / "workgate" / "ui_runtime").exists()
 
 
 def test_main_reports_success_and_stable_failure(

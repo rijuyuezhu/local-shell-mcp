@@ -7,14 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import local_shell_mcp.remote_worker.lifecycle as lifecycle
-import local_shell_mcp.remote_worker.worker as worker
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+import workgate.remote_worker.lifecycle as lifecycle
+import workgate.remote_worker.worker as worker
+from workgate.config.settings import clear_settings_cache
+from workgate.remote.manager import RemoteManager, RemoteWorker, _utc
 
 
 def _managed_poll_report(**extra: object) -> dict[str, object]:
-    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+    from workgate.remote.bundle import worker_bundle_manifest
 
     manifest = worker_bundle_manifest()
     return {
@@ -29,12 +29,12 @@ def _managed_poll_report(**extra: object) -> dict[str, object]:
 
 def _configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path / "worker-state")
+        "WORKGATE_WORKER_STATE_DIR", str(tmp_path / "worker-state")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.delenv("LOCAL_SHELL_MCP_WORKER_MANAGED", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_WORKER_LOCK_HANDLE", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.delenv("WORKGATE_WORKER_MANAGED", raising=False)
+    monkeypatch.delenv("WORKGATE_WORKER_LOCK_HANDLE", raising=False)
     clear_settings_cache()
 
 
@@ -84,7 +84,7 @@ def test_managed_worker_waits_for_lock_handoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setenv("WORKGATE_WORKER_MANAGED", "1")
     attempts = 0
     sleeps: list[float] = []
 
@@ -194,7 +194,7 @@ def test_worker_lock_survives_reexec(
 import os
 import subprocess
 import sys
-from local_shell_mcp.remote_worker.lifecycle import (
+from workgate.remote_worker.lifecycle import (
     WorkerAlreadyRunningError,
     prepare_worker_lock_reexec,
     worker_run_lock,
@@ -207,7 +207,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "probe":
     except WorkerAlreadyRunningError:
         raise SystemExit(2)
 
-if os.environ.get("LSM_LOCK_STAGE") == "2":
+if os.environ.get("WORKGATE_LOCK_STAGE") == "2":
     with worker_run_lock():
         probe = subprocess.run([sys.executable, __file__, "probe"], check=False)
         if probe.returncode != 2:
@@ -215,7 +215,7 @@ if os.environ.get("LSM_LOCK_STAGE") == "2":
         print("lock inherited", flush=True)
 else:
     with worker_run_lock():
-        os.environ["LSM_LOCK_STAGE"] = "2"
+        os.environ["WORKGATE_LOCK_STAGE"] = "2"
         prepare_worker_lock_reexec()
         os.execv(sys.executable, [sys.executable, __file__])
 """,
@@ -275,7 +275,7 @@ async def test_run_worker_locks_before_enrollment(
     monkeypatch.setattr(lifecycle, "worker_run_lock", fake_lock)
     monkeypatch.setattr(worker, "_run_worker_locked", fake_locked)
     monkeypatch.setattr(
-        "local_shell_mcp.remote_worker.runtime_composition.build_worker_runtime",
+        "workgate.remote_worker.runtime_composition.build_worker_runtime",
         lambda _settings: fake_runtime,
     )
 
@@ -318,7 +318,7 @@ async def test_controller_uses_shorter_worker_poll_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S", "30")
+    monkeypatch.setenv("WORKGATE_REMOTE_POLL_TIMEOUT_S", "30")
     clear_settings_cache()
     manager = RemoteManager()
     monkeypatch.setattr(manager, "_load_registry_unlocked", lambda: None)
@@ -333,7 +333,7 @@ async def test_controller_uses_shorter_worker_poll_deadline(
         raise TimeoutError
 
     monkeypatch.setattr(
-        "local_shell_mcp.remote.manager.asyncio.wait_for", fake_wait_for
+        "workgate.remote.manager.asyncio.wait_for", fake_wait_for
     )
 
     result = await manager.poll(
@@ -422,7 +422,7 @@ async def test_worker_continuously_updates_negotiated_poll_timeout(
 def test_windows_reexec_preserves_lock_handle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from local_shell_mcp.remote_worker import runtime
+    from workgate.remote_worker import runtime
 
     calls: list[object] = []
     monkeypatch.setattr(runtime.sys, "platform", "win32")
@@ -439,7 +439,7 @@ def test_windows_reexec_preserves_lock_handle(
     monkeypatch.setattr(
         runtime,
         "reexec_environment",
-        lambda: {"LOCAL_SHELL_MCP_WORKER_LOCK_HANDLE": "99"},
+        lambda: {"WORKGATE_WORKER_LOCK_HANDLE": "99"},
     )
     captured = SimpleNamespace()
 
@@ -455,7 +455,7 @@ def test_windows_reexec_preserves_lock_handle(
 
     assert calls == ["prepare", ("cancel", 99)]
     assert captured.kwargs["close_fds"] is False
-    assert captured.kwargs["env"]["LOCAL_SHELL_MCP_WORKER_LOCK_HANDLE"] == "99"
+    assert captured.kwargs["env"]["WORKGATE_WORKER_LOCK_HANDLE"] == "99"
 
 
 def test_managed_service_pid_probe_failure_is_nonfatal(

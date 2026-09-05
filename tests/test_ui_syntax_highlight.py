@@ -5,9 +5,7 @@ from pathlib import Path
 
 import pytest
 
-STATIC_ROOT = (
-    Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
-)
+STATIC_ROOT = Path(__file__).parents[1] / "src" / "workgate" / "ui" / "static"
 
 
 def test_syntax_highlighter_is_loaded_before_browser_app_and_uses_safe_dom() -> (

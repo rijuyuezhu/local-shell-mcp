@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.audit.payloads as audit_payload_module
-from local_shell_mcp.audit import (
+import workgate.audit.payloads as audit_payload_module
+from workgate.audit import (
     audit,
     audit_call_context,
     audit_query_snapshot,
@@ -22,15 +22,15 @@ from local_shell_mcp.audit import (
     query_session_audit,
     summarize_audit_entry,
 )
-from local_shell_mcp.audit import core as audit_core
-from local_shell_mcp.audit.core import (
+from workgate.audit import core as audit_core
+from workgate.audit.core import (
     _AUDIT_BINARY_KEY,
     _AUDIT_CYCLE_KEY,
     _coalesce_audit_records,
 )
-from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.tool_session import get_tool_session_store
+from workgate.audit.payloads import AUDIT_PAYLOAD_KEY
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.tool_session import get_tool_session_store
 
 
 def _configure_audit(
@@ -45,30 +45,24 @@ def _configure_audit(
     payload_retention_s: int = 7 * 24 * 60 * 60,
     payloads_enabled: bool = True,
 ) -> Path:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_MAX_AUDIT_LOG_BYTES", str(max_log_bytes))
+    monkeypatch.setenv("WORKGATE_MAX_AUDIT_EVENT_BYTES", str(max_event_bytes))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES", str(max_log_bytes)
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES", str(max_event_bytes)
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED",
+        "WORKGATE_AUDIT_PAYLOADS_ENABLED",
         "true" if payloads_enabled else "false",
     )
+    monkeypatch.setenv("WORKGATE_AUDIT_INLINE_VALUE_BYTES", str(inline_bytes))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES", str(inline_bytes)
+        "WORKGATE_MAX_AUDIT_PAYLOAD_BYTES", str(max_payload_bytes)
     )
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES", str(max_payload_bytes)
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES",
+        "WORKGATE_MAX_AUDIT_PAYLOAD_STORE_BYTES",
         str(max_payload_store_bytes),
     )
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S", str(payload_retention_s)
+        "WORKGATE_AUDIT_PAYLOAD_RETENTION_S", str(payload_retention_s)
     )
     clear_settings_cache()
     return get_settings().audit_log_path
@@ -85,21 +79,21 @@ def _records(path: Path) -> list[dict[str, Any]]:
 def _audit_process(
     workspace: str, state_dir: str, worker: int, events: int
 ) -> None:
-    os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] = workspace
-    os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = state_dir
-    os.environ["LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES"] = "5000000"
-    os.environ["LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES"] = "100000"
+    os.environ["WORKGATE_WORKSPACE_ROOT"] = workspace
+    os.environ["WORKGATE_STATE_DIR"] = state_dir
+    os.environ["WORKGATE_MAX_AUDIT_LOG_BYTES"] = "5000000"
+    os.environ["WORKGATE_MAX_AUDIT_EVENT_BYTES"] = "100000"
     clear_settings_cache()
     for index in range(events):
         audit("process_event", worker=worker, index=index)
 
 
 def _audit_payload_process(workspace: str, state_dir: str, worker: int) -> None:
-    os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] = workspace
-    os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = state_dir
-    os.environ["LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES"] = "256"
-    os.environ["LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES"] = "100000"
-    os.environ["LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES"] = "200000"
+    os.environ["WORKGATE_WORKSPACE_ROOT"] = workspace
+    os.environ["WORKGATE_STATE_DIR"] = state_dir
+    os.environ["WORKGATE_AUDIT_INLINE_VALUE_BYTES"] = "256"
+    os.environ["WORKGATE_MAX_AUDIT_PAYLOAD_BYTES"] = "100000"
+    os.environ["WORKGATE_MAX_AUDIT_PAYLOAD_STORE_BYTES"] = "200000"
     clear_settings_cache()
     audit(
         "process_payload",
@@ -217,7 +211,7 @@ def test_audit_uniformly_redacts_secrets_but_retains_fingerprints(
     pin = "correct-horse-battery-staple"
     raw_token = "ghp_1234567890abcdef1234567890abcdef"
     fingerprint = "0123456789abcdef"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", pin)
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", pin)
     clear_settings_cache()
 
     audit(
@@ -299,10 +293,8 @@ def test_audit_event_is_bounded_without_losing_identity(tmp_path, monkeypatch):
     assert record["call_id"] == "call-large"
     assert record["tool"] == "read"
     payload_reference = record["payload"]
-    assert "$local_shell_mcp_audit_payload" in payload_reference
-    assert payload_reference["$local_shell_mcp_audit_payload"][
-        "json_bytes"
-    ] > len(raw)
+    assert "$workgate_audit_payload" in payload_reference
+    assert payload_reference["$workgate_audit_payload"]["json_bytes"] > len(raw)
 
 
 def test_audit_preserves_nested_error_details(tmp_path, monkeypatch):
@@ -733,7 +725,7 @@ def test_audit_payload_above_per_value_limit_is_explicitly_omitted(
     audit("oversized_payload", payload={"body": "z" * 5_000})
 
     record = _records(path)[0]
-    omitted = record["payload"]["$local_shell_mcp_audit_truncated"]
+    omitted = record["payload"]["$workgate_audit_truncated"]
     assert omitted["reason"] == "payload_byte_limit"
     assert omitted["original_bytes"] > 1_024
     assert list(get_settings().audit_payload_dir.glob("*.json.gz")) == []
@@ -810,7 +802,7 @@ def test_audit_payload_orphan_gc_and_symlink_replacement(tmp_path, monkeypatch):
     assert not orphan.exists()
 
     value = {"body": "safe-" * 2_000}
-    from local_shell_mcp.audit.payloads import canonical_json_bytes
+    from workgate.audit.payloads import canonical_json_bytes
 
     digest = (
         __import__("hashlib").sha256(canonical_json_bytes(value)).hexdigest()
@@ -880,9 +872,7 @@ def test_disabling_audit_payloads_falls_back_to_bounded_jsonl(
     audit("disabled_payload_store", payload={"body": "x" * 20_000})
 
     record = _records(path)[0]
-    assert record["$local_shell_mcp_audit_truncated"]["reason"] == (
-        "event_byte_limit"
-    )
+    assert record["$workgate_audit_truncated"]["reason"] == ("event_byte_limit")
     assert not get_settings().audit_payload_dir.exists()
 
 
@@ -905,7 +895,7 @@ def test_audit_payload_rejects_symlinked_store_root(tmp_path, monkeypatch):
     audit("symlinked-payload-root", payload={"body": "x" * 10_000})
 
     entry = query_audit(event="symlinked-payload-root")["entries"][0]
-    assert entry["payload"]["$local_shell_mcp_audit_truncated"]["reason"] == (
+    assert entry["payload"]["$workgate_audit_truncated"]["reason"] == (
         "payload_store_error"
     )
     assert list(target.iterdir()) == []

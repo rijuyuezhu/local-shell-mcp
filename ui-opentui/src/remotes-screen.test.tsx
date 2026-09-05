@@ -11,16 +11,16 @@ afterEach(() => {
 describe("RemoteInviteResultDialog", () => {
   test("keeps long join commands inside the command box without overlapping labels", async () => {
     const command =
-      "curl -fsSL https://local-shell-mcp.fwerkor.eu.org/api/remote/join | bash -s -- --invite " +
-      "lsmcp_inv_0123456789abcdefghijklmnopqrstuv --name build-host --workdir /workspace/project"
+      "curl -fsSL https://workgate.example.test/api/remote/join | bash -s -- --invite " +
+      "workgate_inv_0123456789abcdefghijklmnopqrstuv --name build-host --workdir /workspace/project"
     const setup = await testRender(
       <RemoteInviteResultDialog
         width={100}
         invite={{
-          code: "lsmcp_inv_0123456789abcdefghijklmnopqrstuv",
+          code: "workgate_inv_0123456789abcdefghijklmnopqrstuv",
           command,
           expires_at: 1_800_000_000,
-          join_url: "https://local-shell-mcp.fwerkor.eu.org/api/remote/join",
+          join_url: "https://workgate.example.test/api/remote/join",
           ttl_s: 900,
         }}
       />,

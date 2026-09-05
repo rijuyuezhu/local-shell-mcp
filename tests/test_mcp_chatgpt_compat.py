@@ -11,35 +11,35 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 
-from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import (
+from tests.helpers import mcp_structured
+from workgate.agent_bridge.mcp import AgentMcpTool
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import (
     _add_public_routes_to_mcp_http_app,
     build_mcp,
 )
-from local_shell_mcp.executors.mcp.transport_security import (
+from workgate.executors.mcp.transport_security import (
     transport_security_settings,
 )
-from local_shell_mcp.oauth.core import service as oauth_service
-from local_shell_mcp.oauth.core.client_store import client_store_path
-from local_shell_mcp.oauth.core.models import AuthCode, OAuthClient
-from local_shell_mcp.oauth.core.scopes import supported_scopes
-from local_shell_mcp.oauth.core.service import _prune_clients, _prune_codes
-from local_shell_mcp.oauth.core.state import (
+from workgate.oauth.core import service as oauth_service
+from workgate.oauth.core.client_store import client_store_path
+from workgate.oauth.core.models import AuthCode, OAuthClient
+from workgate.oauth.core.scopes import supported_scopes
+from workgate.oauth.core.service import _prune_clients, _prune_codes
+from workgate.oauth.core.state import (
     OAuthState,
     configure_oauth_state,
     oauth_state,
 )
-from local_shell_mcp.oauth.core.urls import resource_url
-from local_shell_mcp.oauth.http.authorization import _authorize_form
-from local_shell_mcp.oauth.http.responses import oauth_redirect
-from local_shell_mcp.oauth.protocol.token_codec import (
+from workgate.oauth.core.urls import resource_url
+from workgate.oauth.http.authorization import _authorize_form
+from workgate.oauth.http.responses import oauth_redirect
+from workgate.oauth.protocol.token_codec import (
     issue_access_token,
     validate_bearer_token,
 )
-from local_shell_mcp.tools.registry import agent as tools_module
-from tests.helpers import mcp_structured
+from workgate.tools.registry import agent as tools_module
 
 
 def _output_schema(tool: Any) -> dict[str, Any]:
@@ -77,25 +77,23 @@ def test_oauth_supported_scopes_include_feature_scopes():
 
 
 def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.delenv("WORKGATE_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
 
-    assert resource_url() == "https://local-shell-mcp.example.com/mcp"
+    assert resource_url() == "https://workgate.example.com/mcp"
 
 
 def test_oauth_urls_ignore_untrusted_request_host_headers(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
-    monkeypatch.delenv("LOCAL_SHELL_MCP_BASE_URL", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.delenv("WORKGATE_BASE_URL", raising=False)
+    monkeypatch.delenv("WORKGATE_OAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("WORKGATE_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
     oauth_state().clients.clear()
     oauth_state().codes.clear()
@@ -161,10 +159,8 @@ def test_oauth_urls_ignore_untrusted_request_host_headers(
 
 @pytest.mark.asyncio
 async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -182,11 +178,9 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
 
     transport_security = mcp.settings.transport_security
     assert transport_security is not None
-    assert "local-shell-mcp.example.com" in transport_security.allowed_hosts
-    assert "local-shell-mcp.example.com:443" in transport_security.allowed_hosts
-    assert (
-        "local-shell-mcp.example.com:*" not in transport_security.allowed_hosts
-    )
+    assert "workgate.example.com" in transport_security.allowed_hosts
+    assert "workgate.example.com:443" in transport_security.allowed_hosts
+    assert "workgate.example.com:*" not in transport_security.allowed_hosts
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
     search_meta = tools["workspace_search"].meta
@@ -269,8 +263,8 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
 async def test_shell_tool_schema_exposes_session_and_execution_modes(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tool = {tool.name: tool for tool in await build_mcp().list_tools()}["bash"]
@@ -297,8 +291,8 @@ async def test_shell_tool_schema_exposes_session_and_execution_modes(
 async def test_persistent_shell_tools_use_shell_id_not_session_id(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -330,8 +324,8 @@ async def test_persistent_shell_tools_use_shell_id_not_session_id(
 async def test_shell_tool_returns_per_tool_structured_content(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -355,8 +349,8 @@ async def test_shell_tool_returns_per_tool_structured_content(
 async def test_file_tool_schema_exposes_grounded_read_contract(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -383,8 +377,8 @@ async def test_file_tool_schema_exposes_grounded_read_contract(
 async def test_search_tool_schema_exposes_search_and_paging_contract(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -431,8 +425,8 @@ async def test_search_tool_schema_exposes_search_and_paging_contract(
 
 @pytest.mark.asyncio
 async def test_misc_tool_output_schemas_are_exposed(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -451,8 +445,8 @@ async def test_misc_tool_output_schemas_are_exposed(tmp_path, monkeypatch):
 async def test_job_tool_schema_exposes_durable_companion_contract(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -493,9 +487,9 @@ async def test_job_tool_schema_exposes_durable_companion_contract(
 
 @pytest.mark.asyncio
 async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES", "12345")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_GREP_RESULTS", "678")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MAX_OUTPUT_BYTES", "12345")
+    monkeypatch.setenv("WORKGATE_MAX_GREP_RESULTS", "678")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -509,8 +503,8 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
 
 def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com:8443")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://example.com:8443")
     clear_settings_cache()
 
     transport_security = transport_security_settings()
@@ -525,8 +519,8 @@ def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
 def test_transport_security_handles_default_ports_and_ipv6(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://[2001:db8::1]:443")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://[2001:db8::1]:443")
     clear_settings_cache()
 
     transport_security = transport_security_settings()
@@ -561,9 +555,9 @@ async def test_tool_safety_annotations_are_mode_independent(
     monkeypatch,
     allow_full_control,
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", str(allow_full_control).lower()
+        "WORKGATE_ALLOW_FULL_CONTROL", str(allow_full_control).lower()
     )
     clear_settings_cache()
 
@@ -624,8 +618,8 @@ async def test_tool_safety_annotations_are_mode_independent(
 
 @pytest.mark.asyncio
 async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -666,7 +660,7 @@ async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
 async def test_agent_bridge_annotations_remain_conservative(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir = tmp_path / ".workgate" / "agent_config"
     config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
@@ -693,10 +687,8 @@ async def test_agent_bridge_annotations_remain_conservative(
         async def call_tool(self, name, server, tool, args):
             return {"ok": True}
 
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(config_dir.parent))
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -737,10 +729,8 @@ async def test_agent_bridge_annotations_remain_conservative(
 
 
 def test_oauth_registration_requires_redirect_uri(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
     clear_settings_cache()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
@@ -756,10 +746,8 @@ def test_oauth_registration_requires_redirect_uri(tmp_path, monkeypatch):
 
 
 def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
     clear_settings_cache()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
@@ -795,22 +783,14 @@ def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
 
 
 def test_oauth_registration_enforces_size_limits(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_REGISTRATION_MAX_BODY_BYTES", "1000")
+    monkeypatch.setenv("WORKGATE_OAUTH_REGISTRATION_MAX_REDIRECT_URIS", "1")
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+        "WORKGATE_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS", "40"
     )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_BODY_BYTES", "1000"
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URIS", "1"
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS", "40"
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS", "8"
-    )
+    monkeypatch.setenv("WORKGATE_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS", "8")
     clear_settings_cache()
     oauth_state().clients.clear()
 
@@ -866,12 +846,10 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
     tmp_path, monkeypatch
 ):
     state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
     oauth_state().clients.clear()
 
@@ -894,7 +872,7 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": "https://client.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "code_challenge": _s256_challenge(verifier),
             "code_challenge_method": "S256",
             "pin": "1234",
@@ -925,8 +903,8 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
 def test_oauth_client_approval_rolls_back_when_persistence_fails(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     oauth_state().clients.clear()
     oauth_state().clients["pending"] = OAuthClient(
@@ -950,8 +928,8 @@ def test_oauth_client_approval_rolls_back_when_persistence_fails(
 
 
 def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store_path = client_store_path()
     store_path.parent.mkdir(parents=True, exist_ok=True)
@@ -964,11 +942,9 @@ def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
 
 
 def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
     clear_settings_cache()
     oauth_state().clients.clear()
 
@@ -999,8 +975,8 @@ def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
 
 
 def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "10")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_OAUTH_CLIENT_TTL_S", "10")
     clear_settings_cache()
     oauth_state().clients.clear()
     oauth_state().clients["active"] = OAuthClient(
@@ -1028,12 +1004,10 @@ def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
 def test_oauth_registration_allows_new_client_after_ttl_prune(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
+    monkeypatch.setenv("WORKGATE_OAUTH_CLIENT_TTL_S", "1")
     clear_settings_cache()
     oauth_state().clients.clear()
     oauth_state().clients["old"] = OAuthClient(
@@ -1055,11 +1029,9 @@ def test_oauth_registration_allows_new_client_after_ttl_prune(
 def test_oauth_authorize_requires_registered_client_and_redirect(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
@@ -1069,7 +1041,7 @@ def test_oauth_authorize_requires_registered_client_and_redirect(
             "response_type": "code",
             "client_id": "unknown-client",
             "redirect_uri": "https://client.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "pin": "1234",
         },
         follow_redirects=False,
@@ -1092,7 +1064,7 @@ def test_oauth_authorize_requires_registered_client_and_redirect(
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": "https://attacker.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "pin": "1234",
         },
         follow_redirects=False,
@@ -1108,11 +1080,9 @@ def test_oauth_authorize_requires_registered_client_and_redirect(
 def test_oauth_authorize_requires_pkce_and_supported_scope(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
@@ -1124,7 +1094,7 @@ def test_oauth_authorize_requires_pkce_and_supported_scope(
         "response_type": "code",
         "client_id": register["client_id"],
         "redirect_uri": "https://client.example/callback",
-        "resource": "https://local-shell-mcp.example.com/mcp",
+        "resource": "https://workgate.example.com/mcp",
         "pin": "1234",
     }
 
@@ -1149,11 +1119,9 @@ def test_oauth_authorize_requires_pkce_and_supported_scope(
 
 
 def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.delenv("WORKGATE_OAUTH_ADMIN_PIN", raising=False)
     clear_settings_cache()
     oauth_state().clients.clear()
     oauth_state().codes.clear()
@@ -1169,7 +1137,7 @@ def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
             "response_type": "code",
             "client_id": register["client_id"],
             "redirect_uri": "https://client.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "code_challenge": _s256_challenge("p" * 64),
             "code_challenge_method": "S256",
         },
@@ -1186,20 +1154,18 @@ def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
 
 
 def test_oauth_scope_enforced_for_rest_tools(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "oauth")
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
     read_token = issue_access_token(
         client_id="limited-client",
         scope="shell:read",
-        resource="https://local-shell-mcp.example.com/mcp",
+        resource="https://workgate.example.com/mcp",
     )
     headers = {"Authorization": f"Bearer {read_token}"}
 
@@ -1221,13 +1187,11 @@ def test_oauth_scope_enforced_for_rest_tools(tmp_path, monkeypatch):
 
 
 def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://workgate.example.com")
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.delenv("WORKGATE_OAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("WORKGATE_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
@@ -1242,7 +1206,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
     assert register_response.status_code == 201
     assert register_response.headers["cache-control"] == "no-store"
     registration = register_response.json()
-    assert registration["client_id"].startswith("local-shell-mcp-")
+    assert registration["client_id"].startswith("workgate-")
     assert registration["client_name"] == "Regression Client"
     assert registration["redirect_uris"] == ["https://client.example/callback"]
 
@@ -1255,7 +1219,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
             "response_type": "code",
             "client_id": registration["client_id"],
             "redirect_uri": "https://client.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "scope": "shell:read shell:execute",
             "state": "opaque-state",
             "code_challenge": challenge,
@@ -1271,7 +1235,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
         "https://client.example/callback"
     )
     redirect_query = parse_qs(redirect.query)
-    assert redirect_query["iss"] == ["https://local-shell-mcp.example.com"]
+    assert redirect_query["iss"] == ["https://workgate.example.com"]
     assert redirect_query["state"] == ["opaque-state"]
     code = redirect_query["code"][0]
 
@@ -1282,7 +1246,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
             "code": code,
             "client_id": registration["client_id"],
             "redirect_uri": "https://client.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "code_verifier": verifier,
         },
     )
@@ -1295,8 +1259,8 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
     assert token_payload["expires_in"] > 0
 
     claims = validate_bearer_token(token_payload["access_token"])
-    assert claims["iss"] == "https://local-shell-mcp.example.com"
-    assert claims["aud"] == "https://local-shell-mcp.example.com/mcp"
+    assert claims["iss"] == "https://workgate.example.com"
+    assert claims["aud"] == "https://workgate.example.com/mcp"
     assert claims["client_id"] == registration["client_id"]
     assert claims["scope"] == "shell:read shell:execute"
 
@@ -1307,7 +1271,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
             "code": code,
             "client_id": registration["client_id"],
             "redirect_uri": "https://client.example/callback",
-            "resource": "https://local-shell-mcp.example.com/mcp",
+            "resource": "https://workgate.example.com/mcp",
             "code_verifier": verifier,
         },
     )
@@ -1335,8 +1299,8 @@ def test_oauth_authorize_redirect_preserves_existing_query():
 
 
 def test_prunes_stale_codes(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S", "10")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_OAUTH_CODE_TTL_S", "10")
     clear_settings_cache()
     oauth_state().codes.clear()
 
@@ -1345,7 +1309,7 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
         client_id="client",
         redirect_uri="https://client.example/callback",
         scope="shell:read",
-        resource="https://local-shell-mcp.example.com/mcp",
+        resource="https://workgate.example.com/mcp",
         code_challenge=None,
         code_challenge_method=None,
         created_at=100,
@@ -1357,7 +1321,7 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
         client_id="client",
         redirect_uri="https://client.example/callback",
         scope="shell:read",
-        resource="https://local-shell-mcp.example.com/mcp",
+        resource="https://workgate.example.com/mcp",
         code_challenge=None,
         code_challenge_method=None,
         created_at=100,
@@ -1369,7 +1333,7 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
         client_id="client",
         redirect_uri="https://client.example/callback",
         scope="shell:read",
-        resource="https://local-shell-mcp.example.com/mcp",
+        resource="https://workgate.example.com/mcp",
         code_challenge=None,
         code_challenge_method=None,
         created_at=80,
@@ -1380,10 +1344,10 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
 
 
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.delenv("LOCAL_SHELL_MCP_BASE_URL", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.delenv("WORKGATE_BASE_URL", raising=False)
+    monkeypatch.delenv("WORKGATE_OAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("WORKGATE_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
 
     token = issue_access_token(
@@ -1398,7 +1362,7 @@ def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
 
 
 def test_oauth_authorize_form_is_mobile_friendly(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
     response = _authorize_form(
@@ -1423,7 +1387,7 @@ def test_oauth_authorize_form_is_mobile_friendly(tmp_path, monkeypatch):
 
 
 def test_oauth_authorize_form_escapes_reflected_fields(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
     marker = chr(60) + "unsafe" + chr(62)

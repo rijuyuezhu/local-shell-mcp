@@ -5,15 +5,15 @@ import textwrap
 import pytest
 from mcp.shared.auth import OAuthToken
 
-import local_shell_mcp.agent_bridge.cli as agent_cli
-import local_shell_mcp.executors.cli as server_cli
-import local_shell_mcp.jobs.cli as jobs_cli
-import local_shell_mcp.main as cli
-import local_shell_mcp.ui.cli as tui_cli
-from local_shell_mcp import __version__
-from local_shell_mcp.agent_bridge.auth_store import AgentAuthStore
-from local_shell_mcp.config.settings import load_settings
-from local_shell_mcp.config.surface import (
+import workgate.agent_bridge.cli as agent_cli
+import workgate.executors.cli as server_cli
+import workgate.jobs.cli as jobs_cli
+import workgate.main as cli
+import workgate.ui.cli as tui_cli
+from workgate import __version__
+from workgate.agent_bridge.auth_store import AgentAuthStore
+from workgate.config.settings import load_settings
+from workgate.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
 )
@@ -122,7 +122,7 @@ def test_version_option_prints_package_version(capsys):
         parser.parse_args(["--version"])
 
     assert exc_info.value.code == 0
-    assert capsys.readouterr().out == f"local-shell-mcp {__version__}\n"
+    assert capsys.readouterr().out == f"workgate {__version__}\n"
 
 
 def test_version_subcommand_prints_package_version(capsys):
@@ -130,7 +130,7 @@ def test_version_subcommand_prints_package_version(capsys):
 
     args.handler(args)
 
-    assert capsys.readouterr().out.startswith(f"local-shell-mcp {__version__}")
+    assert capsys.readouterr().out.startswith(f"workgate {__version__}")
 
 
 def test_every_setting_has_cli_option():
@@ -212,7 +212,7 @@ def test_worker_subcommand_parse_to_worker_handler():
             "--server",
             "https://example.com",
             "--invite",
-            "lsmcp_inv_xxxxx",
+            "workgate_inv_xxxxx",
             "--name",
             "npu-4card",
             "--workdir",
@@ -222,7 +222,7 @@ def test_worker_subcommand_parse_to_worker_handler():
 
     assert args.worker_command == "connect"
     assert args.server == "https://example.com"
-    assert args.invite == "lsmcp_inv_xxxxx"
+    assert args.invite == "workgate_inv_xxxxx"
     assert args.name == "npu-4card"
     assert args.workdir == "/home/user/project"
     assert not hasattr(args, "persist")

@@ -5,20 +5,20 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.ui.dashboard as dashboard_module
-import local_shell_mcp.ui.http.common as ui_common_module
-import local_shell_mcp.ui.http.dashboard as ui_dashboard_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
-from local_shell_mcp.schemas.result_models.remote import (
+import workgate.ui.dashboard as dashboard_module
+import workgate.ui.http.common as ui_common_module
+import workgate.ui.http.dashboard as ui_dashboard_module
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
+from workgate.oauth.protocol.token_codec import issue_access_token
+from workgate.remote_worker.dispatch import execute_worker_tool
+from workgate.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 
 
 @pytest.fixture(autouse=True)
@@ -36,13 +36,13 @@ def _configure(
     remote_enabled: bool = False,
 ) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(workspace / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(workspace / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_ENABLED", "true" if remote_enabled else "false"
+        "WORKGATE_REMOTE_ENABLED", "true" if remote_enabled else "false"
     )
     clear_settings_cache()
 

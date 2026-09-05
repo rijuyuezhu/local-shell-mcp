@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "local-shell-mcp-ui",
+      "name": "workgate-ui",
       "dependencies": {
         "@opentui/core": "0.4.3",
         "@opentui/react": "0.4.3",

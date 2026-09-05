@@ -1,24 +1,24 @@
 import pytest
 
-from local_shell_mcp.composition.services import (
+from workgate.composition.services import (
     build_runtime_services,
     install_runtime_services,
 )
-from local_shell_mcp.config.settings import Settings, clear_settings_cache
-from local_shell_mcp.executors.search_composition import (
+from workgate.config.settings import Settings, clear_settings_cache
+from workgate.executors.search_composition import (
     build_controller_tool_catalog,
 )
-from local_shell_mcp.persistence import configure_state_store
-from local_shell_mcp.remote.manager import (
+from workgate.persistence import configure_state_store
+from workgate.remote.manager import (
     RemoteManager,
     configure_remote_manager,
 )
-from local_shell_mcp.remote_worker.search_composition import (
+from workgate.remote_worker.search_composition import (
     build_worker_dispatcher_with_search,
 )
-from local_shell_mcp.tool_session import configure_tool_session_store
-from local_shell_mcp.tools.registry.files import FileToolRegistry
-from local_shell_mcp.tools.registry.read import ReadToolRegistry
+from workgate.tool_session import configure_tool_session_store
+from workgate.tools.registry.files import FileToolRegistry
+from workgate.tools.registry.read import ReadToolRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -32,8 +32,8 @@ def _restore_global_runtime_services():
 
 
 def _settings(tmp_path, monkeypatch) -> Settings:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     return Settings()
 
@@ -79,8 +79,8 @@ async def test_controller_files_and_read_use_explicit_service_without_ambient_fa
     )
     assert _tool(read_registry, "read").session_admission == "handler"
 
-    import local_shell_mcp.ops.files as files_ops
-    import local_shell_mcp.ops.read as read_ops
+    import workgate.ops.files as files_ops
+    import workgate.ops.read as read_ops
 
     def ambient_files_should_not_run():
         raise AssertionError(
@@ -182,8 +182,8 @@ async def test_worker_dispatcher_uses_composed_files_and_read_overrides(
         },
     )
 
-    import local_shell_mcp.ops.files as files_ops
-    import local_shell_mcp.ops.read as read_ops
+    import workgate.ops.files as files_ops
+    import workgate.ops.read as read_ops
 
     async def legacy_files_should_not_run(*_args, **_kwargs):
         raise AssertionError("worker Files fell back to legacy dispatch")

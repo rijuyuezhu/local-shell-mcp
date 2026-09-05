@@ -8,7 +8,7 @@ import pytest
 RENDERER = (
     Path(__file__).resolve().parents[1]
     / "src"
-    / "local_shell_mcp"
+    / "workgate"
     / "ui"
     / "static"
     / "terminal_renderer.js"

@@ -1,6 +1,6 @@
 # Cloudflare Tunnel
 
-A remote MCP client needs a public HTTPS endpoint. Cloudflare Tunnel can forward a public hostname to the local `local-shell-mcp` service while the server's own OAuth flow protects `/mcp`.
+A remote MCP client needs a public HTTPS endpoint. Cloudflare Tunnel can forward a public hostname to the local `workgate` service while the server's own OAuth flow protects `/mcp`.
 
 ## Create the tunnel and obtain its token
 
@@ -25,10 +25,10 @@ Add the public origin and copied token to `.env`:
 
 ```env
 CLOUDFLARE_TUNNEL_TOKEN=eyJ...
-LOCAL_SHELL_MCP_BASE_URL=https://mcp.example.com
+WORKGATE_BASE_URL=https://mcp.example.com
 ```
 
-`LOCAL_SHELL_MCP_BASE_URL` is the origin only. Do not append `/mcp`. Return to [Quickstart](quickstart.md#4-create-and-start-the-tunnel) to start the service and tunnel.
+`WORKGATE_BASE_URL` is the origin only. Do not append `/mcp`. Return to [Quickstart](quickstart.md#4-create-and-start-the-tunnel) to start the service and tunnel.
 
 ## Verify
 
@@ -47,7 +47,7 @@ https://mcp.example.com/mcp
 ## Common mistakes
 
 - The connector URL does not end in `/mcp`.
-- `LOCAL_SHELL_MCP_BASE_URL` incorrectly includes `/mcp`.
+- `WORKGATE_BASE_URL` incorrectly includes `/mcp`.
 - The tunnel target does not point to the local server address and port.
 - The public hostname changed but `.env` still contains the old origin.
 - OAuth is disabled on a public hostname.

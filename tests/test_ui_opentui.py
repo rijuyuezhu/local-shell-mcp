@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-import local_shell_mcp.ui.http.opentui as opentui
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.ui.http.live_state import (
+import workgate.ui.http.opentui as opentui
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.ui.http.live_state import (
     build_human_ui_runtime,
     configure_human_ui_runtime,
 )
@@ -31,12 +31,12 @@ def _reset_settings() -> Generator[None]:
 def _configure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, auth: str
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TUI_COMMAND", "fake-tui")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth)
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_UI_TUI_COMMAND", "fake-tui")
     clear_settings_cache()
 
 
@@ -74,7 +74,7 @@ def test_opentui_websocket_requires_oauth_token(
     with (
         pytest.raises(WebSocketDisconnect) as exc_info,
         client.websocket_connect(
-            "/ui/ws/opentui", subprotocols=["lsm-ui-terminal"]
+            "/ui/ws/opentui", subprotocols=["workgate-ui-terminal"]
         ),
     ):
         pass
@@ -96,7 +96,7 @@ def test_opentui_websocket_streams_process_output_and_closes(
 
     with client.websocket_connect(
         "/ui/ws/opentui?cols=90&rows=28&cell_aspect=2",
-        subprotocols=["lsm-ui-terminal"],
+        subprotocols=["workgate-ui-terminal"],
     ) as websocket:
         assert websocket.receive_bytes() == b"OpenTUI ready\r\n"
         with pytest.raises(WebSocketDisconnect) as exc_info:
@@ -121,7 +121,7 @@ def test_opentui_websocket_reports_abnormal_process_exit(
 
     with client.websocket_connect(
         "/ui/ws/opentui?cols=90&rows=28&cell_aspect=2",
-        subprotocols=["lsm-ui-terminal"],
+        subprotocols=["workgate-ui-terminal"],
     ) as websocket:
         assert websocket.receive_bytes() == b"OpenTUI ready\r\n"
         with pytest.raises(WebSocketDisconnect) as exc_info:
@@ -167,13 +167,11 @@ def test_spawn_opentui_process_keeps_local_token_in_environment(
     assert captured["command"] == ["fake-tui"]
     assert "private-token" not in captured["command"]
     assert captured["env"][opentui.UI_LOCAL_TOKEN_ENV] == "private-token"
-    assert captured["env"]["LOCAL_SHELL_MCP_UI_API_BASE"].endswith(
-        ":8765/api/ui"
-    )
-    assert captured["env"]["LOCAL_SHELL_MCP_UI_MODE"] == "web"
+    assert captured["env"]["WORKGATE_UI_API_BASE"].endswith(":8765/api/ui")
+    assert captured["env"]["WORKGATE_UI_MODE"] == "web"
     assert captured["env"]["TERM"] == "xterm-256color"
     assert captured["env"]["COLORTERM"] == "truecolor"
     assert captured["env"]["TERM_PROGRAM"] == "vscode"
     assert captured["env"]["TERM_PROGRAM_VERSION"] == (
-        f"local-shell-mcp/{opentui.__version__}"
+        f"workgate/{opentui.__version__}"
     )

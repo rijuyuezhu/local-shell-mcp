@@ -9,15 +9,15 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 from starlette.types import ASGIApp, Message, Scope
 
-import local_shell_mcp.http.request_limits as request_limit_module
-from local_shell_mcp.config.settings import (
+import workgate.http.request_limits as request_limit_module
+from workgate.config.settings import (
     Settings,
     clear_settings_cache,
     configure_settings,
 )
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import build_mcp_http_app
-from local_shell_mcp.http.request_limits import (
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import build_mcp_http_app
+from workgate.http.request_limits import (
     RequestBodyLimitMiddleware,
 )
 
@@ -241,14 +241,12 @@ def _configure_http_limit(
     auth_mode: str = "none",
     remote_enabled: bool = True,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_ENABLED", str(remote_enabled).lower()
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES", "64")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", str(remote_enabled).lower())
+    monkeypatch.setenv("WORKGATE_MAX_HTTP_REQUEST_BYTES", "64")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
 
@@ -324,7 +322,7 @@ def test_protected_mcp_route_authenticates_before_reading_large_body(
             auth_mode="oauth",
             remote_enabled=False,
             max_http_request_bytes=64,
-            base_url="https://local-shell-mcp.example.com",
+            base_url="https://workgate.example.com",
             agent_bridge_enabled=False,
         )
     )
@@ -391,7 +389,7 @@ async def test_real_http_process_rejects_oversized_body(tmp_path, monkeypatch):
 
     from tests.e2e_helpers import run_http_process
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES", "64")
+    monkeypatch.setenv("WORKGATE_MAX_HTTP_REQUEST_BYTES", "64")
     async with (
         run_http_process(tmp_path, mode="http") as (base_url, _workspace),
         httpx.AsyncClient(timeout=10) as client,

@@ -2,7 +2,7 @@
   "precedence": [
     "defaults",
     "config file",
-    "LOCAL_SHELL_MCP_* environment variables",
+    "WORKGATE_* environment variables",
     "CLI arguments"
   ],
   "section_order": [
@@ -40,7 +40,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MODE"
+            "code": "WORKGATE_MODE"
           },
           "mcp | http | both | stdio",
           {
@@ -60,7 +60,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_HOST"
+            "code": "WORKGATE_HOST"
           },
           "string",
           {
@@ -80,7 +80,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_PORT"
+            "code": "WORKGATE_PORT"
           },
           "integer",
           {
@@ -114,7 +114,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_UI_ENABLED"
+            "code": "WORKGATE_UI_ENABLED"
           },
           "true | false",
           {
@@ -134,7 +134,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_UI_PATH"
+            "code": "WORKGATE_UI_PATH"
           },
           "string",
           {
@@ -157,7 +157,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_UI_TUI_COMMAND"
+            "code": "WORKGATE_UI_TUI_COMMAND"
           },
           "string",
           {
@@ -177,7 +177,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S"
+            "code": "WORKGATE_UI_TERMINAL_IDLE_TIMEOUT_S"
           },
           "integer",
           {
@@ -197,7 +197,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS"
+            "code": "WORKGATE_UI_TERMINAL_MAX_CONNECTIONS"
           },
           "integer",
           {
@@ -217,7 +217,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_UI_WALLPAPER"
+            "code": "WORKGATE_UI_WALLPAPER"
           },
           "aurora | grid | none",
           {
@@ -251,7 +251,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_WORKSPACE_ROOT"
+            "code": "WORKGATE_WORKSPACE_ROOT"
           },
           "path",
           {
@@ -271,11 +271,11 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_STATE_DIR"
+            "code": "WORKGATE_STATE_DIR"
           },
           "path",
           {
-            "code": "/workspace/.local-shell-mcp"
+            "code": "/workspace/.workgate"
           },
           "Directory for runtime state. Including audit logs, temporary files, and config"
         ]
@@ -305,7 +305,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AUTH_MODE"
+            "code": "WORKGATE_AUTH_MODE"
           },
           "none | oauth",
           {
@@ -325,7 +325,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST"
+            "code": "WORKGATE_AUTH_BYPASS_LOCALHOST"
           },
           "true | false",
           {
@@ -345,7 +345,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S"
+            "code": "WORKGATE_MCP_SESSION_IDLE_TIMEOUT_S"
           },
           "integer",
           {
@@ -365,7 +365,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MCP_MAX_SESSIONS"
+            "code": "WORKGATE_MCP_MAX_SESSIONS"
           },
           "integer",
           {
@@ -388,7 +388,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_BASE_URL"
+            "code": "WORKGATE_BASE_URL"
           },
           "string",
           {
@@ -411,7 +411,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_ISSUER"
+            "code": "WORKGATE_OAUTH_ISSUER"
           },
           "string",
           {
@@ -434,7 +434,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_RESOURCE"
+            "code": "WORKGATE_OAUTH_RESOURCE"
           },
           "string",
           {
@@ -457,7 +457,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN"
+            "code": "WORKGATE_OAUTH_ADMIN_PIN"
           },
           "string",
           {
@@ -477,7 +477,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S"
+            "code": "WORKGATE_OAUTH_ACCESS_TOKEN_TTL_S"
           },
           "integer",
           {
@@ -497,7 +497,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S"
+            "code": "WORKGATE_OAUTH_CODE_TTL_S"
           },
           "integer",
           {
@@ -517,7 +517,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES"
+            "code": "WORKGATE_OAUTH_MAX_PENDING_CODES"
           },
           "integer",
           {
@@ -537,7 +537,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S"
+            "code": "WORKGATE_OAUTH_CLIENT_TTL_S"
           },
           "integer",
           {
@@ -557,7 +557,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS"
+            "code": "WORKGATE_OAUTH_MAX_DYNAMIC_CLIENTS"
           },
           "integer",
           {
@@ -577,7 +577,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_BODY_BYTES"
+            "code": "WORKGATE_OAUTH_REGISTRATION_MAX_BODY_BYTES"
           },
           "integer",
           {
@@ -597,7 +597,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URIS"
+            "code": "WORKGATE_OAUTH_REGISTRATION_MAX_REDIRECT_URIS"
           },
           "integer",
           {
@@ -617,7 +617,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS"
+            "code": "WORKGATE_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS"
           },
           "integer",
           {
@@ -637,7 +637,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS"
+            "code": "WORKGATE_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS"
           },
           "integer",
           {
@@ -671,7 +671,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"
+            "code": "WORKGATE_ALLOW_FULL_CONTROL"
           },
           "true | false",
           {
@@ -691,7 +691,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S"
+            "code": "WORKGATE_TOOL_TIMEOUT_S"
           },
           "number",
           {
@@ -711,7 +711,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S"
+            "code": "WORKGATE_RUN_SHELL_DEFAULT_TIMEOUT_S"
           },
           "integer",
           {
@@ -731,7 +731,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S"
+            "code": "WORKGATE_RUN_SHELL_MAX_TIMEOUT_S"
           },
           "integer",
           {
@@ -751,7 +751,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES"
+            "code": "WORKGATE_MAX_OUTPUT_BYTES"
           },
           "integer",
           {
@@ -771,7 +771,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES"
+            "code": "WORKGATE_MAX_JOB_LOG_BYTES"
           },
           "integer",
           {
@@ -791,7 +791,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_JOBS"
+            "code": "WORKGATE_MAX_JOBS"
           },
           "integer",
           {
@@ -811,7 +811,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS"
+            "code": "WORKGATE_MAX_AGENT_SESSIONS"
           },
           "integer",
           {
@@ -831,7 +831,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S"
+            "code": "WORKGATE_AGENT_SESSION_RETENTION_S"
           },
           "integer",
           {
@@ -851,7 +851,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS"
+            "code": "WORKGATE_MAX_SESSION_SNAPSHOTS"
           },
           "integer",
           {
@@ -871,7 +871,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOT_BYTES"
+            "code": "WORKGATE_MAX_SESSION_SNAPSHOT_BYTES"
           },
           "integer",
           {
@@ -891,7 +891,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES"
+            "code": "WORKGATE_MAX_FILE_READ_BYTES"
           },
           "integer",
           {
@@ -911,7 +911,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES"
+            "code": "WORKGATE_MAX_VIEW_IMAGE_BYTES"
           },
           "integer",
           {
@@ -931,7 +931,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_SKILLS"
+            "code": "WORKGATE_MAX_SKILLS"
           },
           "integer",
           {
@@ -951,7 +951,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_SKILL_RELATED_FILES"
+            "code": "WORKGATE_MAX_SKILL_RELATED_FILES"
           },
           "integer",
           {
@@ -971,7 +971,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_SKILL_SCAN_ENTRIES"
+            "code": "WORKGATE_MAX_SKILL_SCAN_ENTRIES"
           },
           "integer",
           {
@@ -991,7 +991,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_SKILL_PATH_BYTES"
+            "code": "WORKGATE_MAX_SKILL_PATH_BYTES"
           },
           "integer",
           {
@@ -1011,7 +1011,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES"
+            "code": "WORKGATE_MAX_FILE_WRITE_BYTES"
           },
           "integer",
           {
@@ -1031,7 +1031,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_GREP_RESULTS"
+            "code": "WORKGATE_MAX_GREP_RESULTS"
           },
           "integer",
           {
@@ -1051,7 +1051,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_DIRECTORY_ENTRIES"
+            "code": "WORKGATE_MAX_DIRECTORY_ENTRIES"
           },
           "integer",
           {
@@ -1071,7 +1071,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_GLOB_RESULTS"
+            "code": "WORKGATE_MAX_GLOB_RESULTS"
           },
           "integer",
           {
@@ -1091,7 +1091,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TREE_ENTRIES"
+            "code": "WORKGATE_MAX_TREE_ENTRIES"
           },
           "integer",
           {
@@ -1111,7 +1111,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TODOS"
+            "code": "WORKGATE_MAX_TODOS"
           },
           "integer",
           {
@@ -1131,7 +1131,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TODO_BYTES"
+            "code": "WORKGATE_MAX_TODO_BYTES"
           },
           "integer",
           {
@@ -1151,7 +1151,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES"
+            "code": "WORKGATE_MAX_HTTP_REQUEST_BYTES"
           },
           "integer",
           {
@@ -1171,7 +1171,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES"
+            "code": "WORKGATE_MAX_AUDIT_LOG_BYTES"
           },
           "integer",
           {
@@ -1191,7 +1191,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES"
+            "code": "WORKGATE_MAX_AUDIT_EVENT_BYTES"
           },
           "integer",
           {
@@ -1211,7 +1211,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED"
+            "code": "WORKGATE_AUDIT_PAYLOADS_ENABLED"
           },
           "true | false",
           {
@@ -1231,7 +1231,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES"
+            "code": "WORKGATE_AUDIT_INLINE_VALUE_BYTES"
           },
           "integer",
           {
@@ -1251,7 +1251,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES"
+            "code": "WORKGATE_MAX_AUDIT_PAYLOAD_BYTES"
           },
           "integer",
           {
@@ -1271,7 +1271,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES"
+            "code": "WORKGATE_MAX_AUDIT_PAYLOAD_STORE_BYTES"
           },
           "integer",
           {
@@ -1291,7 +1291,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S"
+            "code": "WORKGATE_AUDIT_PAYLOAD_RETENTION_S"
           },
           "integer",
           {
@@ -1311,7 +1311,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TMP_FILES"
+            "code": "WORKGATE_MAX_TMP_FILES"
           },
           "integer",
           {
@@ -1331,7 +1331,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TMP_BYTES"
+            "code": "WORKGATE_MAX_TMP_BYTES"
           },
           "integer",
           {
@@ -1351,7 +1351,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES"
+            "code": "WORKGATE_MAX_TRANSFER_ARCHIVE_ENTRIES"
           },
           "integer",
           {
@@ -1371,7 +1371,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES"
+            "code": "WORKGATE_MAX_TRANSFER_UNPACKED_BYTES"
           },
           "integer",
           {
@@ -1391,7 +1391,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS"
+            "code": "WORKGATE_MAX_CONCURRENT_COMMANDS"
           },
           "integer",
           {
@@ -1411,7 +1411,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS"
+            "code": "WORKGATE_MAX_TMUX_SESSIONS"
           },
           "integer",
           {
@@ -1431,7 +1431,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED"
+            "code": "WORKGATE_FILE_DOWNLOAD_ENABLED"
           },
           "true | false",
           {
@@ -1451,7 +1451,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_TTL_S"
+            "code": "WORKGATE_FILE_DOWNLOAD_DEFAULT_TTL_S"
           },
           "integer",
           {
@@ -1471,7 +1471,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_TTL_S"
+            "code": "WORKGATE_FILE_DOWNLOAD_MAX_TTL_S"
           },
           "integer",
           {
@@ -1491,7 +1491,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS"
+            "code": "WORKGATE_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS"
           },
           "integer",
           {
@@ -1511,7 +1511,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES"
+            "code": "WORKGATE_FILE_DOWNLOAD_MAX_FILE_BYTES"
           },
           "integer",
           {
@@ -1531,7 +1531,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_COMMAND_DENYLIST"
+            "code": "WORKGATE_COMMAND_DENYLIST"
           },
           "CSV or YAML list",
           {
@@ -1551,7 +1551,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_PATH_DENYLIST"
+            "code": "WORKGATE_PATH_DENYLIST"
           },
           "CSV or YAML list",
           {
@@ -1585,7 +1585,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_ENABLED"
+            "code": "WORKGATE_REMOTE_ENABLED"
           },
           "true | false",
           {
@@ -1605,7 +1605,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S"
+            "code": "WORKGATE_REMOTE_INVITE_TTL_S"
           },
           "integer",
           {
@@ -1625,7 +1625,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S"
+            "code": "WORKGATE_REMOTE_POLL_TIMEOUT_S"
           },
           "integer",
           {
@@ -1645,7 +1645,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S"
+            "code": "WORKGATE_REMOTE_JOB_TIMEOUT_S"
           },
           "integer",
           {
@@ -1665,7 +1665,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS"
+            "code": "WORKGATE_REMOTE_MAX_PENDING_JOBS"
           },
           "integer",
           {
@@ -1685,7 +1685,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_ENABLED"
+            "code": "WORKGATE_REMOTE_HTTP_TRANSFER_ENABLED"
           },
           "true | false",
           {
@@ -1705,7 +1705,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES"
+            "code": "WORKGATE_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES"
           },
           "integer",
           {
@@ -1725,7 +1725,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_CHUNK_BYTES"
+            "code": "WORKGATE_REMOTE_HTTP_TRANSFER_CHUNK_BYTES"
           },
           "integer",
           {
@@ -1745,7 +1745,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_TICKET_TTL_S"
+            "code": "WORKGATE_REMOTE_HTTP_TRANSFER_TICKET_TTL_S"
           },
           "integer",
           {
@@ -1765,7 +1765,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE"
+            "code": "WORKGATE_REMOTE_HTTP_TRANSFER_MAX_ACTIVE"
           },
           "integer",
           {
@@ -1785,7 +1785,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES"
+            "code": "WORKGATE_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES"
           },
           "integer",
           {
@@ -1819,7 +1819,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED"
+            "code": "WORKGATE_AGENT_BRIDGE_ENABLED"
           },
           "true | false",
           {
@@ -1839,7 +1839,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S"
+            "code": "WORKGATE_AGENT_MCP_PROBE_TIMEOUT_S"
           },
           "integer",
           {
@@ -1859,7 +1859,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S"
+            "code": "WORKGATE_AGENT_MCP_CALL_TIMEOUT_S"
           },
           "integer",
           {
@@ -1879,7 +1879,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS"
+            "code": "WORKGATE_AGENT_DYNAMIC_MCP_TOOLS"
           },
           "true | false",
           {
@@ -1899,7 +1899,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_SKILL_TOOLS"
+            "code": "WORKGATE_AGENT_DYNAMIC_SKILL_TOOLS"
           },
           "true | false",
           {
@@ -1933,7 +1933,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE"
+            "code": "WORKGATE_SHELL_EXECUTABLE"
           },
           "string",
           {
@@ -1953,7 +1953,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_TMUX_BIN"
+            "code": "WORKGATE_TMUX_BIN"
           },
           "string",
           {
@@ -1973,7 +1973,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_RG_BIN"
+            "code": "WORKGATE_RG_BIN"
           },
           "string",
           {
@@ -1993,7 +1993,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_GIT_BIN"
+            "code": "WORKGATE_GIT_BIN"
           },
           "string",
           {
@@ -2013,7 +2013,7 @@
             ]
           },
           {
-            "code": "LOCAL_SHELL_MCP_PYTHON_BIN"
+            "code": "WORKGATE_PYTHON_BIN"
           },
           "string",
           {
@@ -2056,7 +2056,7 @@
       "default": "mcp",
       "default_display": "mcp",
       "description": "Server transport mode.",
-      "env": "LOCAL_SHELL_MCP_MODE",
+      "env": "WORKGATE_MODE",
       "name": "mode",
       "nullable": false,
       "section": "Server",
@@ -2069,7 +2069,7 @@
       "default": "0.0.0.0",
       "default_display": "0.0.0.0",
       "description": "Bind host for HTTP/MCP transports.",
-      "env": "LOCAL_SHELL_MCP_HOST",
+      "env": "WORKGATE_HOST",
       "name": "host",
       "nullable": false,
       "section": "Server",
@@ -2082,7 +2082,7 @@
       "default": 8765,
       "default_display": "8765",
       "description": "Bind port for HTTP/MCP transports.",
-      "env": "LOCAL_SHELL_MCP_PORT",
+      "env": "WORKGATE_PORT",
       "name": "port",
       "nullable": false,
       "section": "Server",
@@ -2098,7 +2098,7 @@
       "default": true,
       "default_display": "true",
       "description": "Mount the browser Human UI and its authenticated API on the HTTP server.",
-      "env": "LOCAL_SHELL_MCP_UI_ENABLED",
+      "env": "WORKGATE_UI_ENABLED",
       "name": "ui_enabled",
       "nullable": false,
       "section": "Human interface",
@@ -2111,7 +2111,7 @@
       "default": "/ui",
       "default_display": "/ui",
       "description": "Non-root URL path where the browser Human UI is mounted.",
-      "env": "LOCAL_SHELL_MCP_UI_PATH",
+      "env": "WORKGATE_UI_PATH",
       "name": "ui_path",
       "nullable": false,
       "section": "Human interface",
@@ -2124,7 +2124,7 @@
       "default": null,
       "default_display": "unset",
       "description": "Optional administrator-supplied OpenTUI executable command.",
-      "env": "LOCAL_SHELL_MCP_UI_TUI_COMMAND",
+      "env": "WORKGATE_UI_TUI_COMMAND",
       "name": "ui_tui_command",
       "nullable": true,
       "section": "Human interface",
@@ -2137,7 +2137,7 @@
       "default": 3600,
       "default_display": "3600",
       "description": "Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry.",
-      "env": "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S",
+      "env": "WORKGATE_UI_TERMINAL_IDLE_TIMEOUT_S",
       "name": "ui_terminal_idle_timeout_s",
       "nullable": false,
       "section": "Human interface",
@@ -2150,7 +2150,7 @@
       "default": 8,
       "default_display": "8",
       "description": "Maximum concurrent Human UI terminal WebSocket connections.",
-      "env": "LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS",
+      "env": "WORKGATE_UI_TERMINAL_MAX_CONNECTIONS",
       "name": "ui_terminal_max_connections",
       "nullable": false,
       "section": "Human interface",
@@ -2167,7 +2167,7 @@
       "default": "aurora",
       "default_display": "aurora",
       "description": "Browser Human UI background treatment; no external network image is fetched.",
-      "env": "LOCAL_SHELL_MCP_UI_WALLPAPER",
+      "env": "WORKGATE_UI_WALLPAPER",
       "name": "ui_wallpaper",
       "nullable": false,
       "section": "Human interface",
@@ -2180,7 +2180,7 @@
       "default": "/workspace",
       "default_display": "/workspace",
       "description": "Root directory for workspace.",
-      "env": "LOCAL_SHELL_MCP_WORKSPACE_ROOT",
+      "env": "WORKGATE_WORKSPACE_ROOT",
       "name": "workspace_root",
       "nullable": false,
       "section": "Paths and state",
@@ -2190,10 +2190,10 @@
     {
       "choices": [],
       "cli": "--state-dir",
-      "default": "/workspace/.local-shell-mcp",
-      "default_display": "/workspace/.local-shell-mcp",
+      "default": "/workspace/.workgate",
+      "default_display": "/workspace/.workgate",
       "description": "Directory for runtime state. Including audit logs, temporary files, and config",
-      "env": "LOCAL_SHELL_MCP_STATE_DIR",
+      "env": "WORKGATE_STATE_DIR",
       "name": "state_dir",
       "nullable": false,
       "section": "Paths and state",
@@ -2209,7 +2209,7 @@
       "default": "oauth",
       "default_display": "oauth",
       "description": "Authentication mode. Do not expose public services with none.",
-      "env": "LOCAL_SHELL_MCP_AUTH_MODE",
+      "env": "WORKGATE_AUTH_MODE",
       "name": "auth_mode",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2225,7 +2225,7 @@
       "default": false,
       "default_display": "false",
       "description": "Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through proxies or shared hosts.",
-      "env": "LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST",
+      "env": "WORKGATE_AUTH_BYPASS_LOCALHOST",
       "name": "auth_bypass_localhost",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2238,7 +2238,7 @@
       "default": 180,
       "default_display": "180",
       "description": "Idle timeout for stateful Streamable HTTP MCP sessions in seconds.",
-      "env": "LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S",
+      "env": "WORKGATE_MCP_SESSION_IDLE_TIMEOUT_S",
       "name": "mcp_session_idle_timeout_s",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2251,7 +2251,7 @@
       "default": 1024,
       "default_display": "1024",
       "description": "Maximum concurrent stateful Streamable HTTP MCP sessions.",
-      "env": "LOCAL_SHELL_MCP_MCP_MAX_SESSIONS",
+      "env": "WORKGATE_MCP_MAX_SESSIONS",
       "name": "mcp_max_sessions",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2264,7 +2264,7 @@
       "default": null,
       "default_display": "unset",
       "description": "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname.",
-      "env": "LOCAL_SHELL_MCP_BASE_URL",
+      "env": "WORKGATE_BASE_URL",
       "name": "base_url",
       "nullable": true,
       "section": "Authentication and OAuth",
@@ -2277,7 +2277,7 @@
       "default": null,
       "default_display": "unset",
       "description": "Override URL for OAuth issuer metadata; usually derived from base_url.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_ISSUER",
+      "env": "WORKGATE_OAUTH_ISSUER",
       "name": "oauth_issuer",
       "nullable": true,
       "section": "Authentication and OAuth",
@@ -2290,7 +2290,7 @@
       "default": null,
       "default_display": "unset",
       "description": "Override URL for OAuth resource metadata; usually derived from base_url plus /mcp.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_RESOURCE",
+      "env": "WORKGATE_OAUTH_RESOURCE",
       "name": "oauth_resource",
       "nullable": true,
       "section": "Authentication and OAuth",
@@ -2303,7 +2303,7 @@
       "default": null,
       "default_display": "unset",
       "description": "Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value of at least 8 characters.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN",
+      "env": "WORKGATE_OAUTH_ADMIN_PIN",
       "name": "oauth_admin_pin",
       "nullable": true,
       "section": "Authentication and OAuth",
@@ -2316,7 +2316,7 @@
       "default": 3600,
       "default_display": "3600",
       "description": "Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S",
+      "env": "WORKGATE_OAUTH_ACCESS_TOKEN_TTL_S",
       "name": "oauth_access_token_ttl_s",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2329,7 +2329,7 @@
       "default": 300,
       "default_display": "300",
       "description": "OAuth authorization-code lifetime in seconds. The authorization must be done within this time.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S",
+      "env": "WORKGATE_OAUTH_CODE_TTL_S",
       "name": "oauth_code_ttl_s",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2342,7 +2342,7 @@
       "default": 2048,
       "default_display": "2048",
       "description": "Maximum unused, unexpired OAuth authorization codes kept in memory; set to 0 to disable this capacity limit.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES",
+      "env": "WORKGATE_OAUTH_MAX_PENDING_CODES",
       "name": "oauth_max_pending_codes",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2355,7 +2355,7 @@
       "default": 86400,
       "default_display": "86400",
       "description": "Pending OAuth client registration lifetime in seconds. Approved clients are persisted without this TTL; set to 0 to disable pending expiration.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S",
+      "env": "WORKGATE_OAUTH_CLIENT_TTL_S",
       "name": "oauth_client_ttl_s",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2368,7 +2368,7 @@
       "default": 256,
       "default_display": "256",
       "description": "Maximum pending OAuth client registrations kept in memory. Approved clients do not count; set to 0 to disable this capacity limit.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS",
+      "env": "WORKGATE_OAUTH_MAX_DYNAMIC_CLIENTS",
       "name": "oauth_max_dynamic_clients",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2381,7 +2381,7 @@
       "default": 16384,
       "default_display": "16384",
       "description": "Maximum JSON body size accepted by dynamic OAuth client registration.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_BODY_BYTES",
+      "env": "WORKGATE_OAUTH_REGISTRATION_MAX_BODY_BYTES",
       "name": "oauth_registration_max_body_bytes",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2394,7 +2394,7 @@
       "default": 10,
       "default_display": "10",
       "description": "Maximum redirect URIs accepted in one dynamic OAuth client registration.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URIS",
+      "env": "WORKGATE_OAUTH_REGISTRATION_MAX_REDIRECT_URIS",
       "name": "oauth_registration_max_redirect_uris",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2407,7 +2407,7 @@
       "default": 2048,
       "default_display": "2048",
       "description": "Maximum length of each dynamic OAuth client redirect URI.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS",
+      "env": "WORKGATE_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS",
       "name": "oauth_registration_max_redirect_uri_chars",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2420,7 +2420,7 @@
       "default": 200,
       "default_display": "200",
       "description": "Maximum length of a dynamic OAuth client display name.",
-      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS",
+      "env": "WORKGATE_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS",
       "name": "oauth_registration_max_client_name_chars",
       "nullable": false,
       "section": "Authentication and OAuth",
@@ -2436,7 +2436,7 @@
       "default": false,
       "default_display": "false",
       "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP safety annotations remain conservative in this mode.",
-      "env": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL",
+      "env": "WORKGATE_ALLOW_FULL_CONTROL",
       "name": "allow_full_control",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2449,7 +2449,7 @@
       "default": 60,
       "default_display": "60",
       "description": "Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded cleanup time beyond run_shell_max_timeout_s.",
-      "env": "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S",
+      "env": "WORKGATE_TOOL_TIMEOUT_S",
       "name": "tool_timeout_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2462,7 +2462,7 @@
       "default": 10,
       "default_display": "10",
       "description": "Default timeout for bounded shell command calls in seconds.",
-      "env": "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S",
+      "env": "WORKGATE_RUN_SHELL_DEFAULT_TIMEOUT_S",
       "name": "run_shell_default_timeout_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2475,7 +2475,7 @@
       "default": 120,
       "default_display": "120",
       "description": "Maximum timeout accepted by bounded shell command calls in seconds.",
-      "env": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S",
+      "env": "WORKGATE_RUN_SHELL_MAX_TIMEOUT_S",
       "name": "run_shell_max_timeout_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2488,7 +2488,7 @@
       "default": 200000,
       "default_display": "200000",
       "description": "Command output limit in bytes.",
-      "env": "LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES",
+      "env": "WORKGATE_MAX_OUTPUT_BYTES",
       "name": "max_output_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2501,7 +2501,7 @@
       "default": 10000000,
       "default_display": "10000000",
       "description": "Maximum retained output bytes for one tracked background-job attempt.",
-      "env": "LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES",
+      "env": "WORKGATE_MAX_JOB_LOG_BYTES",
       "name": "max_job_log_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2514,7 +2514,7 @@
       "default": 1000,
       "default_display": "1000",
       "description": "Maximum retained tracked-job records; active jobs are never pruned.",
-      "env": "LOCAL_SHELL_MCP_MAX_JOBS",
+      "env": "WORKGATE_MAX_JOBS",
       "name": "max_jobs",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2527,7 +2527,7 @@
       "default": 256,
       "default_display": "256",
       "description": "Maximum durable agent/workspace sessions after stale-session pruning.",
-      "env": "LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS",
+      "env": "WORKGATE_MAX_AGENT_SESSIONS",
       "name": "max_agent_sessions",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2540,7 +2540,7 @@
       "default": 2592000,
       "default_display": "2592000",
       "description": "Idle retention for durable agent/workspace sessions; 0 disables age-based expiry.",
-      "env": "LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S",
+      "env": "WORKGATE_AGENT_SESSION_RETENTION_S",
       "name": "agent_session_retention_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2553,7 +2553,7 @@
       "default": 2000,
       "default_display": "2000",
       "description": "Maximum grounding snapshots retained for one agent session.",
-      "env": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS",
+      "env": "WORKGATE_MAX_SESSION_SNAPSHOTS",
       "name": "max_session_snapshots",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2566,7 +2566,7 @@
       "default": 8388608,
       "default_display": "8388608",
       "description": "Maximum encoded grounding-snapshot metadata retained for one session.",
-      "env": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOT_BYTES",
+      "env": "WORKGATE_MAX_SESSION_SNAPSHOT_BYTES",
       "name": "max_session_snapshot_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2579,7 +2579,7 @@
       "default": 512000,
       "default_display": "512000",
       "description": "Per-file read limit in bytes.",
-      "env": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES",
+      "env": "WORKGATE_MAX_FILE_READ_BYTES",
       "name": "max_file_read_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2592,7 +2592,7 @@
       "default": 20971520,
       "default_display": "20971520",
       "description": "Maximum raw bytes accepted by the native MCP image viewer.",
-      "env": "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES",
+      "env": "WORKGATE_MAX_VIEW_IMAGE_BYTES",
       "name": "max_view_image_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2605,7 +2605,7 @@
       "default": 256,
       "default_display": "256",
       "description": "Maximum number of discovered Skills across all configured sources.",
-      "env": "LOCAL_SHELL_MCP_MAX_SKILLS",
+      "env": "WORKGATE_MAX_SKILLS",
       "name": "max_skills",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2618,7 +2618,7 @@
       "default": 1000,
       "default_display": "1000",
       "description": "Maximum related files returned for one Skill.",
-      "env": "LOCAL_SHELL_MCP_MAX_SKILL_RELATED_FILES",
+      "env": "WORKGATE_MAX_SKILL_RELATED_FILES",
       "name": "max_skill_related_files",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2631,7 +2631,7 @@
       "default": 5000,
       "default_display": "5000",
       "description": "Maximum filesystem entries inspected during one Skill registry scan.",
-      "env": "LOCAL_SHELL_MCP_MAX_SKILL_SCAN_ENTRIES",
+      "env": "WORKGATE_MAX_SKILL_SCAN_ENTRIES",
       "name": "max_skill_scan_entries",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2644,7 +2644,7 @@
       "default": 200000,
       "default_display": "200000",
       "description": "Maximum UTF-8 bytes used by returned related Skill paths.",
-      "env": "LOCAL_SHELL_MCP_MAX_SKILL_PATH_BYTES",
+      "env": "WORKGATE_MAX_SKILL_PATH_BYTES",
       "name": "max_skill_path_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2657,7 +2657,7 @@
       "default": 5000000,
       "default_display": "5000000",
       "description": "Per-file write/edit limit in bytes.",
-      "env": "LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES",
+      "env": "WORKGATE_MAX_FILE_WRITE_BYTES",
       "name": "max_file_write_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2670,7 +2670,7 @@
       "default": 200,
       "default_display": "200",
       "description": "Maximum grep result count.",
-      "env": "LOCAL_SHELL_MCP_MAX_GREP_RESULTS",
+      "env": "WORKGATE_MAX_GREP_RESULTS",
       "name": "max_grep_results",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2683,7 +2683,7 @@
       "default": 5000,
       "default_display": "5000",
       "description": "Maximum listed directory entries.",
-      "env": "LOCAL_SHELL_MCP_MAX_DIRECTORY_ENTRIES",
+      "env": "WORKGATE_MAX_DIRECTORY_ENTRIES",
       "name": "max_directory_entries",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2696,7 +2696,7 @@
       "default": 5000,
       "default_display": "5000",
       "description": "Maximum glob search results.",
-      "env": "LOCAL_SHELL_MCP_MAX_GLOB_RESULTS",
+      "env": "WORKGATE_MAX_GLOB_RESULTS",
       "name": "max_glob_results",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2709,7 +2709,7 @@
       "default": 5000,
       "default_display": "5000",
       "description": "Maximum tree-view entries.",
-      "env": "LOCAL_SHELL_MCP_MAX_TREE_ENTRIES",
+      "env": "WORKGATE_MAX_TREE_ENTRIES",
       "name": "max_tree_entries",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2722,7 +2722,7 @@
       "default": 1000,
       "default_display": "1000",
       "description": "Todo-list item limit.",
-      "env": "LOCAL_SHELL_MCP_MAX_TODOS",
+      "env": "WORKGATE_MAX_TODOS",
       "name": "max_todos",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2735,7 +2735,7 @@
       "default": 1000000,
       "default_display": "1000000",
       "description": "Todo-list total byte limit.",
-      "env": "LOCAL_SHELL_MCP_MAX_TODO_BYTES",
+      "env": "WORKGATE_MAX_TODO_BYTES",
       "name": "max_todo_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2748,7 +2748,7 @@
       "default": 16000000,
       "default_display": "16000000",
       "description": "Maximum inbound HTTP request-body bytes; 0 disables the shared limit.",
-      "env": "LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES",
+      "env": "WORKGATE_MAX_HTTP_REQUEST_BYTES",
       "name": "max_http_request_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2761,7 +2761,7 @@
       "default": 20000000,
       "default_display": "20000000",
       "description": "Maximum active audit JSONL bytes before atomic recent-record retention.",
-      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES",
+      "env": "WORKGATE_MAX_AUDIT_LOG_BYTES",
       "name": "max_audit_log_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2774,7 +2774,7 @@
       "default": 1000000,
       "default_display": "1000000",
       "description": "Maximum encoded bytes retained for one audit event before preview truncation.",
-      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES",
+      "env": "WORKGATE_MAX_AUDIT_EVENT_BYTES",
       "name": "max_audit_event_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2790,7 +2790,7 @@
       "default": true,
       "default_display": "true",
       "description": "Store large sanitized audit field values as private content-addressed payloads.",
-      "env": "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED",
+      "env": "WORKGATE_AUDIT_PAYLOADS_ENABLED",
       "name": "audit_payloads_enabled",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2803,7 +2803,7 @@
       "default": 16384,
       "default_display": "16384",
       "description": "Maximum canonical JSON bytes kept inline for one sanitized audit field value.",
-      "env": "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES",
+      "env": "WORKGATE_AUDIT_INLINE_VALUE_BYTES",
       "name": "audit_inline_value_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2816,7 +2816,7 @@
       "default": 67108864,
       "default_display": "67108864",
       "description": "Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload.",
-      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES",
+      "env": "WORKGATE_MAX_AUDIT_PAYLOAD_BYTES",
       "name": "max_audit_payload_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2829,7 +2829,7 @@
       "default": 268435456,
       "default_display": "268435456",
       "description": "Maximum compressed bytes retained in the private audit payload store.",
-      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES",
+      "env": "WORKGATE_MAX_AUDIT_PAYLOAD_STORE_BYTES",
       "name": "max_audit_payload_store_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2842,7 +2842,7 @@
       "default": 604800,
       "default_display": "604800",
       "description": "Recovery lifetime and orphan grace period for private audit payload objects.",
-      "env": "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S",
+      "env": "WORKGATE_AUDIT_PAYLOAD_RETENTION_S",
       "name": "audit_payload_retention_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2855,7 +2855,7 @@
       "default": 500,
       "default_display": "500",
       "description": "Temporary-file count limit. When exceeded, old files are deleted.",
-      "env": "LOCAL_SHELL_MCP_MAX_TMP_FILES",
+      "env": "WORKGATE_MAX_TMP_FILES",
       "name": "max_tmp_files",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2868,7 +2868,7 @@
       "default": 50000000,
       "default_display": "50000000",
       "description": "Temporary-file byte limit. When exceeded, old files are deleted.",
-      "env": "LOCAL_SHELL_MCP_MAX_TMP_BYTES",
+      "env": "WORKGATE_MAX_TMP_BYTES",
       "name": "max_tmp_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2881,7 +2881,7 @@
       "default": 100000,
       "default_display": "100000",
       "description": "Maximum entries accepted from one transferred archive.",
-      "env": "LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES",
+      "env": "WORKGATE_MAX_TRANSFER_ARCHIVE_ENTRIES",
       "name": "max_transfer_archive_entries",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2894,7 +2894,7 @@
       "default": 10000000000,
       "default_display": "10000000000",
       "description": "Maximum declared regular-file bytes accepted while unpacking an archive.",
-      "env": "LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES",
+      "env": "WORKGATE_MAX_TRANSFER_UNPACKED_BYTES",
       "name": "max_transfer_unpacked_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2907,7 +2907,7 @@
       "default": 4,
       "default_display": "4",
       "description": "Concurrent command limit.",
-      "env": "LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS",
+      "env": "WORKGATE_MAX_CONCURRENT_COMMANDS",
       "name": "max_concurrent_commands",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2920,7 +2920,7 @@
       "default": 16,
       "default_display": "16",
       "description": "Persistent shell limit.",
-      "env": "LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS",
+      "env": "WORKGATE_MAX_TMUX_SESSIONS",
       "name": "max_tmux_sessions",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2936,7 +2936,7 @@
       "default": true,
       "default_display": "true",
       "description": "Enable download links created by protected tools.",
-      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED",
+      "env": "WORKGATE_FILE_DOWNLOAD_ENABLED",
       "name": "file_download_enabled",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2949,7 +2949,7 @@
       "default": 3600,
       "default_display": "3600",
       "description": "Default lifetime for file download links in seconds.",
-      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_TTL_S",
+      "env": "WORKGATE_FILE_DOWNLOAD_DEFAULT_TTL_S",
       "name": "file_download_default_ttl_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2962,7 +2962,7 @@
       "default": 604800,
       "default_display": "604800",
       "description": "Maximum lifetime accepted for file download links in seconds.",
-      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_TTL_S",
+      "env": "WORKGATE_FILE_DOWNLOAD_MAX_TTL_S",
       "name": "file_download_max_ttl_s",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2975,7 +2975,7 @@
       "default": 0,
       "default_display": "0",
       "description": "Default download-count limit for file links; 0 means unlimited until expiry.",
-      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS",
+      "env": "WORKGATE_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS",
       "name": "file_download_default_max_downloads",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -2988,7 +2988,7 @@
       "default": 0,
       "default_display": "0",
       "description": "Maximum file size allowed for download links; 0 disables this size limit.",
-      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES",
+      "env": "WORKGATE_FILE_DOWNLOAD_MAX_FILE_BYTES",
       "name": "file_download_max_file_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -3012,7 +3012,7 @@
       ],
       "default_display": "docker.sock,/var/run/docker.sock,mkfs,mount,umount,shutdown,reboot,systemctl,iptables,nft",
       "description": "Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled.",
-      "env": "LOCAL_SHELL_MCP_COMMAND_DENYLIST",
+      "env": "WORKGATE_COMMAND_DENYLIST",
       "name": "command_denylist",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -3032,7 +3032,7 @@
       ],
       "default_display": ".ssh/id_rsa,.ssh/id_ed25519,.env,secrets,credentials,.git/config",
       "description": "Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled.",
-      "env": "LOCAL_SHELL_MCP_PATH_DENYLIST",
+      "env": "WORKGATE_PATH_DENYLIST",
       "name": "path_denylist",
       "nullable": false,
       "section": "Safety and resource limits",
@@ -3048,7 +3048,7 @@
       "default": true,
       "default_display": "true",
       "description": "Enable remote worker routes and MCP tools.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_ENABLED",
+      "env": "WORKGATE_REMOTE_ENABLED",
       "name": "remote_enabled",
       "nullable": false,
       "section": "Remote workers",
@@ -3061,7 +3061,7 @@
       "default": 600,
       "default_display": "600",
       "description": "One-time remote worker invite lifetime in seconds.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S",
+      "env": "WORKGATE_REMOTE_INVITE_TTL_S",
       "name": "remote_invite_ttl_s",
       "nullable": false,
       "section": "Remote workers",
@@ -3074,7 +3074,7 @@
       "default": 25,
       "default_display": "25",
       "description": "Remote worker long-poll heartbeat timeout in seconds.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S",
+      "env": "WORKGATE_REMOTE_POLL_TIMEOUT_S",
       "name": "remote_poll_timeout_s",
       "nullable": false,
       "section": "Remote workers",
@@ -3087,7 +3087,7 @@
       "default": 3600,
       "default_display": "3600",
       "description": "Control-side remote job result timeout in seconds.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S",
+      "env": "WORKGATE_REMOTE_JOB_TIMEOUT_S",
       "name": "remote_job_timeout_s",
       "nullable": false,
       "section": "Remote workers",
@@ -3100,7 +3100,7 @@
       "default": 64,
       "default_display": "64",
       "description": "Maximum queued or in-flight remote jobs allowed per worker.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS",
+      "env": "WORKGATE_REMOTE_MAX_PENDING_JOBS",
       "name": "remote_max_pending_jobs",
       "nullable": false,
       "section": "Remote workers",
@@ -3116,7 +3116,7 @@
       "default": true,
       "default_display": "true",
       "description": "Use the private resumable HTTP gateway for capable large session copies.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_ENABLED",
+      "env": "WORKGATE_REMOTE_HTTP_TRANSFER_ENABLED",
       "name": "remote_http_transfer_enabled",
       "nullable": false,
       "section": "Remote workers",
@@ -3129,7 +3129,7 @@
       "default": 1048576,
       "default_display": "1048576",
       "description": "Minimum payload size selected for private HTTP streaming.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES",
+      "env": "WORKGATE_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES",
       "name": "remote_http_transfer_threshold_bytes",
       "nullable": false,
       "section": "Remote workers",
@@ -3142,7 +3142,7 @@
       "default": 1048576,
       "default_display": "1048576",
       "description": "Maximum request or response chunk size for private HTTP transfer routes.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_CHUNK_BYTES",
+      "env": "WORKGATE_REMOTE_HTTP_TRANSFER_CHUNK_BYTES",
       "name": "remote_http_transfer_chunk_bytes",
       "nullable": false,
       "section": "Remote workers",
@@ -3155,7 +3155,7 @@
       "default": 300,
       "default_display": "300",
       "description": "Lifetime of a private transfer grant before it must be renewed.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_TICKET_TTL_S",
+      "env": "WORKGATE_REMOTE_HTTP_TRANSFER_TICKET_TTL_S",
       "name": "remote_http_transfer_ticket_ttl_s",
       "nullable": false,
       "section": "Remote workers",
@@ -3168,7 +3168,7 @@
       "default": 16,
       "default_display": "16",
       "description": "Maximum non-terminal private transfer objects retained concurrently.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE",
+      "env": "WORKGATE_REMOTE_HTTP_TRANSFER_MAX_ACTIVE",
       "name": "remote_http_transfer_max_active",
       "nullable": false,
       "section": "Remote workers",
@@ -3181,7 +3181,7 @@
       "default": 10737418240,
       "default_display": "10737418240",
       "description": "Maximum aggregate bytes reserved by private controller transfer spools.",
-      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES",
+      "env": "WORKGATE_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES",
       "name": "remote_http_transfer_max_spool_bytes",
       "nullable": false,
       "section": "Remote workers",
@@ -3197,7 +3197,7 @@
       "default": true,
       "default_display": "true",
       "description": "Enable agent capability bridge tools.",
-      "env": "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED",
+      "env": "WORKGATE_AGENT_BRIDGE_ENABLED",
       "name": "agent_bridge_enabled",
       "nullable": false,
       "section": "Agent capability bridge",
@@ -3210,7 +3210,7 @@
       "default": 5,
       "default_display": "5",
       "description": "Agent MCP server probe timeout in seconds.",
-      "env": "LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S",
+      "env": "WORKGATE_AGENT_MCP_PROBE_TIMEOUT_S",
       "name": "agent_mcp_probe_timeout_s",
       "nullable": false,
       "section": "Agent capability bridge",
@@ -3223,7 +3223,7 @@
       "default": 60,
       "default_display": "60",
       "description": "Agent MCP tool-call timeout in seconds.",
-      "env": "LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S",
+      "env": "WORKGATE_AGENT_MCP_CALL_TIMEOUT_S",
       "name": "agent_mcp_call_timeout_s",
       "nullable": false,
       "section": "Agent capability bridge",
@@ -3239,7 +3239,7 @@
       "default": true,
       "default_display": "true",
       "description": "Register dynamic MCP bridge tools.",
-      "env": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS",
+      "env": "WORKGATE_AGENT_DYNAMIC_MCP_TOOLS",
       "name": "agent_dynamic_mcp_tools",
       "nullable": false,
       "section": "Agent capability bridge",
@@ -3255,7 +3255,7 @@
       "default": true,
       "default_display": "true",
       "description": "Register dynamic skill bridge tools.",
-      "env": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_SKILL_TOOLS",
+      "env": "WORKGATE_AGENT_DYNAMIC_SKILL_TOOLS",
       "name": "agent_dynamic_skill_tools",
       "nullable": false,
       "section": "Agent capability bridge",
@@ -3268,7 +3268,7 @@
       "default": "/bin/bash",
       "default_display": "/bin/bash",
       "description": "Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.",
-      "env": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE",
+      "env": "WORKGATE_SHELL_EXECUTABLE",
       "name": "shell_executable",
       "nullable": false,
       "section": "Tool executables",
@@ -3281,7 +3281,7 @@
       "default": "tmux",
       "default_display": "tmux",
       "description": "tmux executable required for persistent shells on POSIX systems.",
-      "env": "LOCAL_SHELL_MCP_TMUX_BIN",
+      "env": "WORKGATE_TMUX_BIN",
       "name": "tmux_bin",
       "nullable": false,
       "section": "Tool executables",
@@ -3294,7 +3294,7 @@
       "default": "rg",
       "default_display": "rg",
       "description": "ripgrep executable.",
-      "env": "LOCAL_SHELL_MCP_RG_BIN",
+      "env": "WORKGATE_RG_BIN",
       "name": "rg_bin",
       "nullable": false,
       "section": "Tool executables",
@@ -3307,7 +3307,7 @@
       "default": "git",
       "default_display": "git",
       "description": "Git executable used for patch validation and application.",
-      "env": "LOCAL_SHELL_MCP_GIT_BIN",
+      "env": "WORKGATE_GIT_BIN",
       "name": "git_bin",
       "nullable": false,
       "section": "Tool executables",
@@ -3320,7 +3320,7 @@
       "default": "python3",
       "default_display": "python3",
       "description": "Python executable; the POSIX default maps to the running interpreter on Windows.",
-      "env": "LOCAL_SHELL_MCP_PYTHON_BIN",
+      "env": "WORKGATE_PYTHON_BIN",
       "name": "python_bin",
       "nullable": false,
       "section": "Tool executables",
