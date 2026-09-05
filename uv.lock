@@ -527,79 +527,6 @@ wheels = [
 ]
 
 [[package]]
-name = "workgate"
-version = "4.3.1"
-source = { editable = "." }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "authlib" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "idna" },
-    { name = "mcp" },
-    { name = "pathspec" },
-    { name = "pillow" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyjwt" },
-    { name = "python-multipart" },
-    { name = "pywinpty", marker = "sys_platform == 'win32'" },
-    { name = "pyyaml" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "coverage" },
-    { name = "packaging" },
-    { name = "playwright" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-timeout" },
-    { name = "ruff" },
-    { name = "wheel" },
-]
-docs = [
-    { name = "mkdocs-material" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=25.1.0" },
-    { name = "authlib", specifier = ">=1.7.2" },
-    { name = "fastapi", specifier = ">=0.138.1" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "idna", specifier = ">=3.10" },
-    { name = "mcp", specifier = ">=1.28.0,<2" },
-    { name = "pathspec", specifier = ">=1.1.1" },
-    { name = "pillow", specifier = ">=12.1.1" },
-    { name = "pydantic", specifier = ">=2.13.4" },
-    { name = "pydantic-settings", specifier = ">=2.14.2" },
-    { name = "pyjwt", specifier = ">=2.13.0" },
-    { name = "python-multipart", specifier = ">=0.0.32" },
-    { name = "pywinpty", marker = "sys_platform == 'win32'", specifier = ">=2.0.13" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.49.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "coverage", extras = ["toml"], specifier = ">=7.15.2" },
-    { name = "packaging", specifier = ">=26.0" },
-    { name = "playwright", specifier = ">=1.61.0" },
-    { name = "pre-commit", specifier = ">=4.6.0" },
-    { name = "pyright", specifier = ">=1.1.411" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pytest-asyncio", specifier = ">=1.4.0" },
-    { name = "pytest-timeout", specifier = ">=2.4.0" },
-    { name = "ruff", specifier = ">=0.15.20" },
-    { name = "wheel", specifier = ">=0.46.3" },
-]
-docs = [{ name = "mkdocs-material", specifier = ">=9.7.6" }]
-
-[[package]]
 name = "markdown"
 version = "3.10.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1511,3 +1438,76 @@ sdist = { url = "https://files.pythonhosted.org/packages/39/62/75f18a0f03b4219c4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/87/1b/9e33c09813d65e248f7f773119148a612516a4bea93e9c6f545f78455b7c/wheel-0.47.0-py3-none-any.whl", hash = "sha256:212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced", size = 32218, upload-time = "2026-04-22T15:51:26.296Z" },
 ]
+
+[[package]]
+name = "workgate"
+version = "5.0.0a1"
+source = { editable = "." }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "authlib" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "idna" },
+    { name = "mcp" },
+    { name = "pathspec" },
+    { name = "pillow" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyjwt" },
+    { name = "python-multipart" },
+    { name = "pywinpty", marker = "sys_platform == 'win32'" },
+    { name = "pyyaml" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "coverage" },
+    { name = "packaging" },
+    { name = "playwright" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-timeout" },
+    { name = "ruff" },
+    { name = "wheel" },
+]
+docs = [
+    { name = "mkdocs-material" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiofiles", specifier = ">=25.1.0" },
+    { name = "authlib", specifier = ">=1.7.2" },
+    { name = "fastapi", specifier = ">=0.138.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "idna", specifier = ">=3.10" },
+    { name = "mcp", specifier = ">=1.28.0,<2" },
+    { name = "pathspec", specifier = ">=1.1.1" },
+    { name = "pillow", specifier = ">=12.1.1" },
+    { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "pyjwt", specifier = ">=2.13.0" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
+    { name = "pywinpty", marker = "sys_platform == 'win32'", specifier = ">=2.0.13" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.49.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "coverage", extras = ["toml"], specifier = ">=7.15.2" },
+    { name = "packaging", specifier = ">=26.0" },
+    { name = "playwright", specifier = ">=1.61.0" },
+    { name = "pre-commit", specifier = ">=4.6.0" },
+    { name = "pyright", specifier = ">=1.1.411" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "pytest-timeout", specifier = ">=2.4.0" },
+    { name = "ruff", specifier = ">=0.15.20" },
+    { name = "wheel", specifier = ">=0.46.3" },
+]
+docs = [{ name = "mkdocs-material", specifier = ">=9.7.6" }]
