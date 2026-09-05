@@ -17,7 +17,7 @@ def test_coverage_paths_canonicalize_managed_runtime_sources() -> None:
 
     assert paths[0] == "src/workgate"
     assert "workgate" in paths
-    assert "*/.workgate-worker/runtimes/*/workgate" in paths
+    assert "*/runtime/workgate" in paths
     assert "*/runtimes/*/workgate" in paths
 
 

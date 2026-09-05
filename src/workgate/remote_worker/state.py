@@ -1,13 +1,51 @@
-"""Dependency-leaf filesystem paths for the source-only worker runtime."""
+"""Dependency-leaf filesystem paths for the trimmed worker runtime."""
 
 import os
 import re
+import sys
 from pathlib import Path
+
+_APP_NAME = "workgate"
+
+
+def _absolute_env_path(value: str | None) -> Path | None:
+    """Accept an app-dir environment value only when it is already absolute."""
+    if not value:
+        return None
+    path = Path(value)
+    if not path.is_absolute():
+        return None
+    return path
+
+
+def _default_worker_roots() -> tuple[Path, Path]:
+    """Resolve bootstrap-compatible worker state/data roots with stdlib only."""
+    home = Path.home().expanduser()
+    if sys.platform == "darwin":
+        support = home / "Library" / "Application Support" / _APP_NAME
+        return support / "state" / "worker", support / "data" / "worker"
+    if sys.platform.startswith("win"):
+        local = _absolute_env_path(os.getenv("LOCALAPPDATA")) or (
+            home / "AppData" / "Local"
+        )
+        return (
+            local / _APP_NAME / "state" / "worker",
+            local / _APP_NAME / "data" / "worker",
+        )
+    state_base = _absolute_env_path(os.getenv("XDG_STATE_HOME")) or (
+        home / ".local" / "state"
+    )
+    data_base = _absolute_env_path(os.getenv("XDG_DATA_HOME")) or (
+        home / ".local" / "share"
+    )
+    return state_base / _APP_NAME / "worker", data_base / _APP_NAME / "worker"
+
 
 _RUNTIME_METADATA_FILE_NAME = "runtime.json"
 _PROFILE_METADATA_FILE_NAME = "profile.json"
 WORKER_PROFILE_ID_ENV = "WORKGATE_WORKER_PROFILE_ID"
 WORKER_RUNTIME_DIGEST_ENV = "WORKGATE_WORKER_RUNTIME_SHA256"
+WORKER_DATA_DIR_ENV = "WORKGATE_WORKER_DATA_DIR"
 _PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
 _RUNTIME_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -16,15 +54,21 @@ def worker_state_dir() -> Path:
     """Return the absolute persistent state directory for one installation."""
     configured = os.getenv("WORKGATE_WORKER_STATE_DIR")
     if configured:
-        path = Path(configured).expanduser()
-    else:
-        xdg_state_home = os.getenv("XDG_STATE_HOME")
-        path = (
-            Path(xdg_state_home).expanduser() / "workgate-worker"
-            if xdg_state_home
-            else Path.home() / ".local" / "state" / "workgate-worker"
-        )
-    return path.resolve()
+        return Path(configured).expanduser().resolve()
+    state_dir, _ = _default_worker_roots()
+    return state_dir.resolve()
+
+
+def worker_data_dir() -> Path:
+    """Return the persistent installation-data directory for this worker."""
+    configured = os.getenv(WORKER_DATA_DIR_ENV)
+    if configured:
+        return Path(configured).expanduser().resolve()
+    legacy_state = os.getenv("WORKGATE_WORKER_STATE_DIR")
+    if legacy_state:
+        return Path(legacy_state).expanduser().resolve()
+    _, data_dir = _default_worker_roots()
+    return data_dir.resolve()
 
 
 def worker_profiles_dir() -> Path:
@@ -84,7 +128,7 @@ def worker_profile_lock_path(profile_id: str) -> Path:
 
 def worker_runtimes_dir() -> Path:
     """Return the root containing immutable content-addressed runtimes."""
-    return worker_state_dir() / "runtimes"
+    return worker_data_dir() / "runtimes"
 
 
 def worker_runtime_dir_for_digest(digest: str) -> Path:
@@ -120,22 +164,35 @@ def activate_worker_runtime(digest: str | None) -> str | None:
 def worker_launcher_path() -> Path:
     """Return the stable user-facing worker launcher path."""
     name = "run.cmd" if os.name == "nt" else "run"
-    return worker_state_dir() / name
+    return worker_data_dir() / name
 
 
 def worker_launcher_runner_path() -> Path:
     """Return the standalone Python runner used by the stable launcher."""
-    return worker_state_dir() / "run.py"
+    return worker_data_dir() / "run.py"
 
 
 def worker_python_path() -> Path:
     """Return the stored Python executable used by the stable launcher."""
-    return worker_state_dir() / "python"
+    return worker_data_dir() / "python"
+
+
+def worker_uv_path() -> Path:
+    """Return the persisted uv executable used for runtime installation/upgrades."""
+    name = "uv.exe" if os.name == "nt" else "uv"
+    return worker_data_dir() / name
+
+
+def runtime_python_path(runtime: Path) -> Path:
+    """Return the Python executable in one uv-managed worker runtime."""
+    if os.name == "nt":
+        return runtime / ".venv" / "Scripts" / "python.exe"
+    return runtime / ".venv" / "bin" / "python"
 
 
 def worker_install_lock_path() -> Path:
     """Return the lock serializing shared runtime installation."""
-    return worker_state_dir() / "install.lock"
+    return worker_data_dir() / "install.lock"
 
 
 def worker_runtime_dir(digest: str | None = None) -> Path:
@@ -143,7 +200,7 @@ def worker_runtime_dir(digest: str | None = None) -> Path:
     selected = digest if digest is not None else active_worker_runtime_digest()
     if selected is not None:
         return worker_runtime_dir_for_digest(selected)
-    return worker_state_dir() / "runtime"
+    return worker_data_dir() / "runtime"
 
 
 def runtime_metadata_path(digest: str | None = None) -> Path:
@@ -151,7 +208,7 @@ def runtime_metadata_path(digest: str | None = None) -> Path:
     selected = digest if digest is not None else active_worker_runtime_digest()
     if selected is not None:
         return runtime_metadata_path_for_digest(selected)
-    return worker_state_dir() / _RUNTIME_METADATA_FILE_NAME
+    return worker_data_dir() / _RUNTIME_METADATA_FILE_NAME
 
 
 def worker_lock_path(profile_id: str | None = None) -> Path:

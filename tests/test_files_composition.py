@@ -218,6 +218,75 @@ async def test_worker_dispatcher_uses_composed_files_and_read_overrides(
 
 
 @pytest.mark.asyncio
+async def test_worker_dispatcher_composed_file_mutations_cover_all_handlers(
+    tmp_path, monkeypatch
+):
+    settings = _settings(tmp_path, monkeypatch)
+    services = _configure_runtime_services(settings)
+    dispatcher = build_worker_dispatcher_with_search(
+        settings, services.tool_session_store
+    )
+    session = await dispatcher.execute(
+        "session_start",
+        {
+            "workdir": str(tmp_path),
+            "target": "local",
+            "machine": None,
+            "label": None,
+        },
+    )
+
+    await dispatcher.execute(
+        "write_file",
+        {
+            "session_id": session.session_id,
+            "path": "edit.txt",
+            "content": "alpha\nbeta\n",
+            "overwrite": True,
+        },
+    )
+    await dispatcher.execute(
+        "edit_lines",
+        {
+            "session_id": session.session_id,
+            "path": "edit.txt",
+            "start_line": 2,
+            "end_line": 2,
+            "replacement": "gamma",
+        },
+    )
+    grounded = await dispatcher.execute(
+        "read",
+        {"session_id": session.session_id, "path": "edit.txt:1-2"},
+    )
+    assert grounded.file is not None
+    assert grounded.file.snapshot_id is not None
+    await dispatcher.execute(
+        "hashline_edit",
+        {
+            "session_id": session.session_id,
+            "input": (
+                f"[edit.txt#{grounded.file.snapshot_id}]\n"
+                "1:alpha\n"
+                "2:gamma\n"
+                "+delta\n"
+                "+epsilon"
+            ),
+        },
+    )
+    await dispatcher.execute(
+        "delete_file_or_dir",
+        {
+            "session_id": session.session_id,
+            "path": "edit.txt",
+            "recursive": False,
+        },
+    )
+
+    assert not (tmp_path / "edit.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_bound_file_registry_handlers_delegate_to_injected_service(
     tmp_path, monkeypatch
 ):

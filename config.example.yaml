@@ -26,10 +26,12 @@ ui_terminal_max_connections: 8
 ui_wallpaper: "aurora"
 
 # Paths and state.
-# Root directory for workspace.
-workspace_root: "/workspace"
-# Directory for runtime state. Including audit logs, temporary files, and config
-state_dir: "/workspace/.workgate"
+# Workspace filesystem boundary; defaults to the directory Workgate was started from.
+# Default when omitted: invocation CWD.
+# workspace_root: "/absolute/path/to/workspace"
+# Directory for durable Workgate runtime state.
+# Default when omitted: platform user-state directory.
+# state_dir: "/absolute/path/to/workgate-state"
 
 # Authentication and OAuth.
 # Authentication mode. Do not expose public services with none.

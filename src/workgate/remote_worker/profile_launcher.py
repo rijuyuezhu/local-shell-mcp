@@ -9,17 +9,22 @@ from pathlib import Path
 
 from ..utils.private_files import atomic_write_private_text
 from .state import (
+    WORKER_DATA_DIR_ENV,
+    worker_data_dir,
     worker_launcher_path,
     worker_launcher_runner_path,
     worker_profile_dir,
     worker_python_path,
+    worker_state_dir,
 )
 
 _REQUIRED_RUNTIME_FILES = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
+    "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -40,6 +45,7 @@ def profile_reconnect_command(profile_id: str) -> str:
 
 def _runner_text() -> str:
     required = repr(_REQUIRED_RUNTIME_FILES)
+    state_root = repr(str(worker_state_dir()))
     return f"""\
 import json
 import os
@@ -47,7 +53,8 @@ import re
 import sys
 from pathlib import Path
 
-state_dir = Path(__file__).resolve().parent
+data_dir = Path(__file__).resolve().parent
+state_dir = Path(os.environ.get("WORKGATE_WORKER_STATE_DIR", {state_root})).expanduser().resolve()
 if len(sys.argv) != 2 or not re.fullmatch(r"p_[A-Za-z0-9_-]{{8,64}}", sys.argv[1]):
     raise SystemExit(f"usage: {{sys.argv[0]}} PROFILE_ID")
 profile_id = sys.argv[1]
@@ -65,7 +72,7 @@ if (
 digest = profile.get("runtime_sha256")
 if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{{64}}", digest):
     raise SystemExit(f"worker profile runtime is invalid: {{profile_id}}")
-runtime = state_dir / "runtimes" / digest
+runtime = data_dir / "runtimes" / digest
 metadata_path = runtime / "runtime.json"
 try:
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -79,12 +86,24 @@ if (
     or not all((runtime / relative).is_file() for relative in required)
 ):
     raise SystemExit("stored worker runtime is incomplete or invalid")
-os.environ["WORKGATE_WORKER_STATE_DIR"] = str(state_dir)
-os.environ["WORKGATE_WORKER_PROFILE_ID"] = profile_id
-os.environ["WORKGATE_WORKER_RUNTIME_SHA256"] = digest
-sys.path.insert(0, str(runtime))
-from workgate.remote_worker.compat import main
-main(["run", profile_id])
+runtime_python = runtime / (
+    ".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python"
+)
+if not runtime_python.is_file():
+    raise SystemExit("stored worker runtime environment is unavailable")
+environment = os.environ.copy()
+environment["WORKGATE_WORKER_STATE_DIR"] = str(state_dir)
+environment[{WORKER_DATA_DIR_ENV!r}] = str(data_dir)
+environment["WORKGATE_WORKER_PROFILE_ID"] = profile_id
+environment["WORKGATE_WORKER_RUNTIME_SHA256"] = digest
+environment["WORKGATE_REMOTE_WORKER_RUNTIME"] = "1"
+environment["WORKGATE_WORKER_MANAGED"] = "1"
+environment["PYTHONPATH"] = str(runtime)
+os.execve(
+    str(runtime_python),
+    [str(runtime_python), "-m", "workgate.remote_worker", "run", profile_id],
+    environment,
+)
 """
 
 
@@ -93,28 +112,28 @@ def _posix_launcher_text() -> str:
 #!/usr/bin/env bash
 set -euo pipefail
 
-STATE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+DATA_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 PYTHON_BIN=""
-IFS= read -r PYTHON_BIN < "$STATE_DIR/python" || true
+IFS= read -r PYTHON_BIN < "$DATA_DIR/python" || true
 if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
   echo "stored worker Python is unavailable; run a fresh invite command" >&2
   exit 1
 fi
-exec "$PYTHON_BIN" "$STATE_DIR/run.py" "$@"
+exec "$PYTHON_BIN" "$DATA_DIR/run.py" "$@"
 """
 
 
 def _windows_launcher_text() -> str:
     return """@echo off\r
 setlocal\r
-set \"STATE_DIR=%~dp0\"\r
+set \"DATA_DIR=%~dp0\"\r
 set \"PYTHON_BIN=\"\r
-set /p PYTHON_BIN=<\"%STATE_DIR%python\"\r
+set /p PYTHON_BIN=<\"%DATA_DIR%python\"\r
 if not defined PYTHON_BIN (\r
   echo stored worker Python is unavailable; run a fresh invite command 1>&2\r
   exit /b 1\r
 )\r
-\"%PYTHON_BIN%\" \"%STATE_DIR%run.py\" %*\r
+\"%PYTHON_BIN%\" \"%DATA_DIR%run.py\" %*\r
 """
 
 
@@ -123,6 +142,7 @@ def ensure_profile_launcher(
 ) -> tuple[Path, bool]:
     """Install the stable profile launcher and report whether it changed."""
     executable = str(Path(python_executable or sys.executable).resolve())
+    worker_data_dir().mkdir(parents=True, exist_ok=True, mode=0o700)
     python_path = worker_python_path()
     runner_path = worker_launcher_runner_path()
     launcher_path = worker_launcher_path()
@@ -136,11 +156,12 @@ def ensure_profile_launcher(
     )
     changed = False
     for path, content in desired:
+        encoded = content.encode("utf-8")
         try:
-            current = path.read_text(encoding="utf-8")
+            current = path.read_bytes()
         except OSError:
             current = None
-        if path.is_symlink() or current != content:
+        if path.is_symlink() or current != encoded:
             atomic_write_private_text(path, content)
             changed = True
     if os.name != "nt":

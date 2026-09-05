@@ -182,11 +182,6 @@ class StateLayout:
         return self.root / "remote_transfers"
 
     @property
-    def agent_config_dir(self) -> Path:
-        """Return the read-only Agent Bridge capability configuration directory."""
-        return self.root / "agent_config"
-
-    @property
     def agent_auth_dir(self) -> Path:
         """Return the private Agent Bridge credential directory."""
         return self.root / "agent_auth"
@@ -200,16 +195,6 @@ class StateLayout:
     def ui_local_token_path(self) -> Path:
         """Return the trusted loopback Human UI token path."""
         return self.ui_dir / "local-token"
-
-    @property
-    def ui_runtime_dir(self) -> Path:
-        """Return the materialized native Human UI runtime directory."""
-        return self.root / "ui-runtime"
-
-    @property
-    def tmp_dir(self) -> Path:
-        """Return the generated temporary-file directory."""
-        return self.root / "tmp"
 
     @property
     def locks_dir(self) -> Path:

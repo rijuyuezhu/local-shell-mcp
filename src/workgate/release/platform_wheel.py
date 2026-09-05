@@ -119,6 +119,12 @@ class PlatformWheelTarget:
 
         return f"{PAYLOAD_PACKAGE_PREFIX}{self.executable_name}.gz"
 
+    @property
+    def executable_digest_path(self) -> str:
+        """Return the packaged trusted digest for the decompressed executable."""
+
+        return f"{self.payload_path}.sha256"
+
 
 @dataclass(frozen=True, slots=True)
 class WheelInspection:
@@ -422,6 +428,7 @@ def staged_payload(
     target: PlatformWheelTarget,
     payload: bytes,
     *,
+    executable_sha256: str | None = None,
     lock_timeout: float = 30.0,
 ) -> Generator[Path]:
     """Stage one payload under an exclusive cross-platform build lock."""
@@ -516,6 +523,14 @@ def staged_payload(
             os.fsync(fd)
         finally:
             os.close(fd)
+        if executable_sha256 is not None:
+            if len(executable_sha256) != 64 or any(
+                character not in "0123456789abcdef"
+                for character in executable_sha256
+            ):
+                raise PlatformWheelError("invalid OpenTUI executable SHA-256")
+            digest_path = staging / f"{target.executable_name}.gz.sha256"
+            digest_path.write_bytes((executable_sha256 + "\n").encode("ascii"))
         yield payload_path
     finally:
         if lock_fd is not None:
@@ -690,7 +705,7 @@ def inspect_wheel(
     pure, metadata_tags = _wheel_metadata(member_map[wheel_path])
     if filename_tags != metadata_tags:
         raise PlatformWheelError("wheel filename and WHEEL tags disagree")
-    payload_paths = sorted(
+    runtime_paths = sorted(
         name
         for name in member_map
         if name.startswith(PAYLOAD_PACKAGE_PREFIX) and not name.endswith("/")
@@ -701,7 +716,7 @@ def inspect_wheel(
             raise PlatformWheelError(
                 "universal wheel must be pure py3-none-any"
             )
-        if payload_paths:
+        if runtime_paths:
             raise PlatformWheelError(
                 "universal wheel must not contain native payloads"
             )
@@ -720,13 +735,24 @@ def inspect_wheel(
         raise PlatformWheelError(
             f"platform wheel must be non-pure py3-none-{target.tag}"
         )
-    if payload_paths != [target.payload_path]:
+    allowed_runtime_paths = {
+        frozenset({target.payload_path}),
+        frozenset({target.payload_path, target.executable_digest_path}),
+    }
+    if frozenset(runtime_paths) not in allowed_runtime_paths:
         raise PlatformWheelError(
             "platform wheel must contain exactly the expected OpenTUI payload"
         )
     payload = member_map[target.payload_path]
     executable = _decompress_payload(payload)
     executable_sha256 = verify_executable(executable, target)
+    digest_metadata = member_map.get(target.executable_digest_path)
+    if digest_metadata is not None and digest_metadata != (
+        executable_sha256 + "\n"
+    ).encode("ascii"):
+        raise PlatformWheelError(
+            "platform wheel OpenTUI executable digest metadata is invalid"
+        )
     if member_info[target.payload_path].compress_type != ZIP_STORED:
         raise PlatformWheelError(
             "platform wheel OpenTUI payload must use ZIP_STORED"
@@ -873,6 +899,7 @@ def build_platform_wheel(
             repo_root,
             target,
             payload,
+            executable_sha256=executable_sha256,
             lock_timeout=lock_timeout,
         ):
             universal = _build_staged_universal_wheel(
@@ -880,7 +907,7 @@ def build_platform_wheel(
                 build_dir,
                 uv_executable=uv_executable,
             )
-            return rewrite_platform_wheel(
+            output_path, inspection = rewrite_platform_wheel(
                 universal,
                 output_dir,
                 target,
@@ -888,6 +915,18 @@ def build_platform_wheel(
                 expected_payload_sha256=payload_sha256,
                 expected_executable_sha256=executable_sha256,
             )
+            try:
+                with ZipFile(output_path, "r") as wheel:
+                    digest_metadata = wheel.read(target.executable_digest_path)
+            except KeyError as exc:
+                raise PlatformWheelError(
+                    "platform wheel is missing OpenTUI executable digest metadata"
+                ) from exc
+            if digest_metadata != (executable_sha256 + "\n").encode("ascii"):
+                raise PlatformWheelError(
+                    "platform wheel OpenTUI executable digest metadata changed"
+                )
+            return output_path, inspection
 
 
 def _parser() -> argparse.ArgumentParser:

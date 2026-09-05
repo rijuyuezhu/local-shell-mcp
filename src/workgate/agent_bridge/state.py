@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from ..app_paths import ensure_private_directory
 from .models import AgentBridgeManifest, LoadedAgentManifest, SkillSource
 
 
@@ -103,6 +104,8 @@ def agent_registry_fingerprint(
     private_state_paths: tuple[Path, ...] = (),
 ) -> str:
     """Fingerprint manifest/Skill roots plus bounded private auth state files."""
+    if config_dir.exists():
+        ensure_private_directory(config_dir)
     digest = hashlib.sha256()
     digest.update(agent_config_fingerprint(config_dir).encode("ascii"))
     for source in sources:
@@ -127,6 +130,8 @@ def agent_registry_fingerprint(
 def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
     """Read and validate the bridge manifest while preserving structured errors for status reporting."""
     config_path = config_dir / "config.json"
+    if config_dir.exists():
+        ensure_private_directory(config_dir)
     if not config_path.exists():
         return LoadedAgentManifest(
             config_path=config_path, status="missing_config"

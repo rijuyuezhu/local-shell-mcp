@@ -42,6 +42,8 @@ class SettingSpec:
     """Optional placeholder shown for CLI arguments."""
     example_default: Any | None = None
     """Optional value used when rendering example configuration files."""
+    dynamic_default_label: str | None = None
+    """Stable description for defaults that are resolved at invocation time."""
 
     def __post_init__(self) -> None:
         """Run validation checks on the setting specification."""
@@ -79,11 +81,16 @@ class SettingSpec:
 
     @property
     def default(self) -> Any:
-        """Return the example/default value used by generated config surfaces."""
-        if self.example_default is not None:
-            return self.example_default
+        """Return the actual Settings default value."""
         field = Settings.model_fields[self.name]
         return field.get_default(call_default_factory=True)
+
+    @property
+    def example(self) -> Any:
+        """Return a deterministic example value for generated config files."""
+        if self.example_default is not None:
+            return self.example_default
+        return self.default
 
     @property
     def annotation(self) -> Any:
@@ -151,8 +158,20 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         metavar="COUNT",
     ),
     SettingSpec("ui_wallpaper", "Human interface", metavar="MODE"),
-    SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
-    SettingSpec("state_dir", "Paths and state", metavar="PATH"),
+    SettingSpec(
+        "workspace_root",
+        "Paths and state",
+        metavar="PATH",
+        example_default="/absolute/path/to/workspace",
+        dynamic_default_label="invocation CWD",
+    ),
+    SettingSpec(
+        "state_dir",
+        "Paths and state",
+        metavar="PATH",
+        example_default="/absolute/path/to/workgate-state",
+        dynamic_default_label="platform user-state directory",
+    ),
     SettingSpec("auth_mode", "Authentication and OAuth"),
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
     SettingSpec(
@@ -489,10 +508,15 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
     for section, specs in SETTING_SPECS_BY_SECTION:
         group = parser.add_argument_group(section)
         for spec in specs:
+            default_display = (
+                spec.dynamic_default_label
+                or default_to_string(spec.default)
+                or "unset"
+            )
             kwargs: dict[str, Any] = {
                 "dest": spec.name,
                 "default": CLI_UNSET,
-                "help": f"{spec.help} Overrides {spec.env_var} and config files. Default: {default_to_string(spec.default) or 'unset'}.",
+                "help": f"{spec.help} Overrides {spec.env_var} and config files. Default: {default_display}.",
             }
             if spec.metavar:
                 kwargs["metavar"] = spec.metavar

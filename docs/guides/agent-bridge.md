@@ -4,17 +4,17 @@ The Agent Bridge makes reusable Skills and selected upstream MCP servers availab
 
 ## Configuration directory
 
-Public configuration lives under the service state directory:
+Declarative Agent Bridge configuration lives in the Workgate config namespace. On Linux the default is:
 
 ```text
-/workspace/.workgate/agent_config/
+${XDG_CONFIG_HOME:-~/.config}/workgate/agent/
   config.json
   skills/
     debugging/
       SKILL.md
 ```
 
-Credentials are managed separately by the CLI. Do not put new tokens or passwords directly in `config.json`.
+macOS and Windows use their native Workgate config locations. Credentials managed by the CLI remain in private durable state rather than this directory. Legacy literal `env` and `headers` values are still accepted in manifests for compatibility, so treat the configuration directory as potentially sensitive and preserve restrictive file permissions. Use managed secret references for new credentials rather than placing tokens or passwords directly in `config.json`.
 
 The bridge also discovers project Skills from `<workdir>/.agents/skills` and user Skills from `$XDG_CONFIG_HOME/agents/skills` when `XDG_CONFIG_HOME` is an absolute path. If `XDG_CONFIG_HOME` is unset or invalid, the user Skill directory falls back to `~/.config/agents/skills`. A project Skill with the same directory name takes priority for that session.
 
@@ -64,7 +64,7 @@ Enabled `stdio` servers are kept alive and reused by the Agent Bridge instead of
 Create a directory containing `SKILL.md`:
 
 ```text
-agent_config/skills/debugging/SKILL.md
+<Workgate config>/agent/skills/debugging/SKILL.md
 ```
 
 ```markdown

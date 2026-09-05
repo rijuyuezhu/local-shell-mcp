@@ -441,6 +441,11 @@ def test_windows_reexec_preserves_lock_handle(
         "reexec_environment",
         lambda: {"WORKGATE_WORKER_LOCK_HANDLE": "99"},
     )
+    monkeypatch.setattr(
+        runtime,
+        "worker_reexec_argv",
+        lambda: ["worker-python", "-m", "workgate.remote_worker", "run"],
+    )
     captured = SimpleNamespace()
 
     def fake_popen(argv, **kwargs):

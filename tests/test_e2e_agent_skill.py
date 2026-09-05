@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tests.e2e_helpers import RestToolClient, run_http_process
+from workgate.app_paths import app_paths
 
 pytestmark = pytest.mark.integration
 
@@ -13,7 +14,8 @@ CODE_HUMANIZER_COMMIT = "a315560f58054d091f0df36dc4ed3bf8364f25e2"
 
 
 def _install_code_humanizer(workspace: Path) -> None:
-    config_dir = workspace / ".workgate" / "agent_config"
+    _ = workspace
+    config_dir = app_paths().agent_config_dir
     skills_dir = config_dir / "skills"
     skill_dir = skills_dir / "code-humanizer"
     skills_dir.mkdir(parents=True)

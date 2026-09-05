@@ -1,4 +1,4 @@
-"""Agent Bridge operations shared by tools and source-only workers."""
+"""Agent Bridge operations shared by tools and remote worker executors."""
 
 from dataclasses import asdict
 from pathlib import Path

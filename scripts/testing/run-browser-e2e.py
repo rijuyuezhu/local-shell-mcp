@@ -22,6 +22,11 @@ def main() -> int:
     env = os.environ.copy()
     env["WORKGATE_BROWSER_E2E"] = "1"
     env["WORKGATE_BROWSER_ARTIFACTS"] = str(artifacts)
+    if "PLAYWRIGHT_BROWSERS_PATH" not in env:
+        cache_home = Path(
+            env.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+        ).expanduser()
+        env["PLAYWRIGHT_BROWSERS_PATH"] = str(cache_home / "ms-playwright")
     command = [
         sys.executable,
         "-m",

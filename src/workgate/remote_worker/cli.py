@@ -385,7 +385,7 @@ def add_worker_subcommands(parser: argparse.ArgumentParser) -> None:
 
 
 def run_worker_cli(argv: list[str] | None = None) -> None:
-    """Run the standalone worker-only parser used by source bundles."""
+    """Run the standalone parser used by trimmed worker runtimes."""
     parser = argparse.ArgumentParser(
         prog="workgate worker",
         description="Manage or run a Workgate remote worker",

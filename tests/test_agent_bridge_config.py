@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -10,11 +11,10 @@ from workgate.agent_bridge.models import (
 )
 from workgate.agent_bridge.redaction import _redact_text, redact_mapping
 from workgate.agent_bridge.state import load_agent_manifest
+from workgate.app_paths import app_paths
 from workgate.config.settings import (
     AGENT_AUTH_STATE_DIR_NAME,
-    AGENT_CONFIG_STATE_DIR_NAME,
     AUDIT_LOG_STATE_DIR_NAME,
-    DEFAULT_STATE_DIR,
     clear_settings_cache,
     get_settings,
     load_settings,
@@ -29,22 +29,20 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
     clear_settings_cache()
 
     settings = load_settings()
+    default_state_dir = app_paths().state_dir
 
     assert settings.workspace_root == tmp_path.resolve()
-    assert settings.state_dir == DEFAULT_STATE_DIR.resolve()
+    assert settings.state_dir == default_state_dir.resolve()
     assert (
         settings.audit_log_path
         == (
-            DEFAULT_STATE_DIR / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
+            default_state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
         ).resolve()
     )
-    assert (
-        settings.agent_config_dir
-        == (DEFAULT_STATE_DIR / AGENT_CONFIG_STATE_DIR_NAME).resolve()
-    )
+    assert settings.agent_config_dir == app_paths().agent_config_dir.resolve()
     assert (
         settings.agent_auth_dir
-        == (DEFAULT_STATE_DIR / AGENT_AUTH_STATE_DIR_NAME).resolve()
+        == (default_state_dir / AGENT_AUTH_STATE_DIR_NAME).resolve()
     )
     assert settings.agent_bridge_enabled is True
     assert settings.agent_mcp_probe_timeout_s == 5
@@ -59,10 +57,7 @@ def test_dependent_state_paths_are_derived_from_custom_state_dir(
     clear_settings_cache()
 
     settings = get_settings()
-    assert (
-        settings.agent_config_dir
-        == (state_dir / AGENT_CONFIG_STATE_DIR_NAME).resolve()
-    )
+    assert settings.agent_config_dir == app_paths().agent_config_dir.resolve()
     assert (
         settings.audit_log_path
         == (state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl").resolve()
@@ -111,6 +106,33 @@ def test_load_agent_manifest_valid_config(tmp_path):
     assert manifest.data.mcp_servers["docs"].enabled is False
     assert manifest.data.dynamic_tools.mcp is False
     assert manifest.data.skills.directory == "skills"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership/mode contract")
+def test_agent_manifest_directory_is_tightened_to_private_mode(tmp_path):
+    config_dir = tmp_path / "agent"
+    config_dir.mkdir(mode=0o755)
+    config_dir.chmod(0o755)
+    (config_dir / "config.json").write_text("{}", encoding="utf-8")
+
+    manifest = load_agent_manifest(config_dir)
+
+    assert manifest.status == "loaded"
+    assert config_dir.stat().st_mode & 0o777 == 0o700
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="symlink creation requires privileges on Windows"
+)
+def test_agent_manifest_rejects_symlink_config_directory(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    (actual / "config.json").write_text("{}", encoding="utf-8")
+    config_dir = tmp_path / "agent"
+    config_dir.symlink_to(actual, target_is_directory=True)
+
+    with pytest.raises(OSError, match="not a directory"):
+        load_agent_manifest(config_dir)
 
 
 def test_load_agent_manifest_invalid_json(tmp_path):

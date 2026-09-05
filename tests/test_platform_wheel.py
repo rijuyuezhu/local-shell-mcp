@@ -84,6 +84,7 @@ def test_target_for_tag(
     assert target.architecture == architecture
     assert target.executable_name == executable
     assert target.payload_path == f"workgate/ui_runtime/{executable}.gz"
+    assert target.executable_digest_path == f"{target.payload_path}.sha256"
 
 
 @pytest.mark.parametrize("tag", ["", "manylinux_2_17_x86_64", "win32", "any"])
@@ -318,14 +319,21 @@ def test_compile_opentui_rejects_wrong_bun_and_missing_lock(
 def test_staged_payload_is_private_and_always_cleaned(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
     target = pw.target_for_tag("linux_x86_64")
-    payload = pw.deterministic_gzip(_executable(target))
+    executable = _executable(target)
+    payload = pw.deterministic_gzip(executable)
+    executable_sha256 = hashlib.sha256(executable).hexdigest()
     package_root = repo / "src" / "workgate"
     lock = pw._platform_wheel_lock_path(repo)
     with (
         pytest.raises(RuntimeError, match="stop"),
-        pw.staged_payload(repo, target, payload) as path,
+        pw.staged_payload(
+            repo, target, payload, executable_sha256=executable_sha256
+        ) as path,
     ):
         assert path.read_bytes() == payload
+        assert Path(f"{path}.sha256").read_bytes() == (
+            executable_sha256 + "\n"
+        ).encode("ascii")
         if os.name != "nt":
             assert stat.S_IMODE(path.stat().st_mode) == 0o644
             assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755
@@ -850,10 +858,15 @@ def test_build_platform_wheel_orchestrates_and_cleans_staging(
             / "ui_runtime"
             / (f"{target.executable_name}.gz")
         )
+        digest_path = Path(f"{payload_path}.sha256")
         assert payload_path.is_file()
+        assert digest_path.is_file()
         return _make_wheel(
             build_dir / "workgate-1.0-py3-none-any.whl",
-            payloads={target.payload_path: payload_path.read_bytes()},
+            payloads={
+                target.payload_path: payload_path.read_bytes(),
+                target.executable_digest_path: digest_path.read_bytes(),
+            },
         )
 
     monkeypatch.setattr(pw, "_build_staged_universal_wheel", fake_build)
@@ -865,9 +878,12 @@ def test_build_platform_wheel_orchestrates_and_cleans_staging(
         uv_executable="custom-uv",
     )
     assert output.is_file()
-    assert (
-        inspection.executable_sha256 == hashlib.sha256(executable).hexdigest()
-    )
+    executable_sha256 = hashlib.sha256(executable).hexdigest()
+    assert inspection.executable_sha256 == executable_sha256
+    with WheelFile(output, "r") as wheel:
+        assert wheel.read(target.executable_digest_path) == (
+            executable_sha256 + "\n"
+        ).encode("ascii")
     assert not (repo / "src" / "workgate" / "ui_runtime").exists()
 
 

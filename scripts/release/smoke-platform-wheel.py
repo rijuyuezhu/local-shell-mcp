@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from workgate import __version__
+from workgate.app_paths import app_paths
 from workgate.config.settings import Settings
 from workgate.ui.runtime import (
     embedded_tui_payload,
@@ -27,14 +28,14 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _require_private_runtime(path: Path, state_dir: Path) -> None:
+def _require_private_runtime(path: Path, cache_dir: Path) -> None:
     resolved_path = path.resolve()
-    resolved_state = state_dir.resolve()
+    resolved_cache = cache_dir.resolve()
     try:
-        resolved_path.relative_to(resolved_state)
+        resolved_path.relative_to(resolved_cache)
     except ValueError as exc:
         raise RuntimeError(
-            f"embedded OpenTUI escaped the private state directory: {resolved_path}"
+            f"embedded OpenTUI escaped the private cache directory: {resolved_path}"
         ) from exc
     if not path.is_file():
         raise RuntimeError(f"embedded OpenTUI was not materialized: {path}")
@@ -71,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     if first != second or len(first) != 1:
         raise RuntimeError("embedded OpenTUI resolution is not stable")
     runtime = Path(first[0])
-    _require_private_runtime(runtime, args.state_dir)
+    _require_private_runtime(runtime, app_paths().ui_runtime_dir)
 
     try:
         completed = subprocess.run(

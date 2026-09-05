@@ -3,22 +3,27 @@ import json
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 import workgate.remote_worker.cli as worker_cli
+import workgate.remote_worker.profile_launcher as profile_launcher
 import workgate.remote_worker.profiles as worker_profiles
 import workgate.remote_worker.worker as worker
 from workgate.remote_worker.state import (
+    WORKER_DATA_DIR_ENV,
     WORKER_PROFILE_ID_ENV,
     WORKER_RUNTIME_DIGEST_ENV,
     activate_worker_profile,
     activate_worker_runtime,
     runtime_metadata_path,
     worker_launcher_path,
+    worker_launcher_runner_path,
     worker_profile_metadata_path,
+    worker_python_path,
     worker_runtime_dir,
 )
 
@@ -201,13 +206,95 @@ def test_reconnect_command_is_credential_free_and_shell_safe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state_dir = tmp_path / "worker state"
+    data_dir = tmp_path / "worker data"
     monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(state_dir))
+    monkeypatch.setenv(WORKER_DATA_DIR_ENV, str(data_dir))
 
     command = worker.worker_reconnect_command("p_abcdefgh")
 
     assert shlex.split(command) == [str(worker_launcher_path()), "p_abcdefgh"]
     assert "access" not in command
     assert "invite" not in command
+
+
+def test_profile_launcher_materialization_is_stable_and_runtime_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_dir = tmp_path / "worker state"
+    data_dir = tmp_path / "worker data"
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(state_dir))
+    monkeypatch.setenv(WORKER_DATA_DIR_ENV, str(data_dir))
+
+    launcher, changed = profile_launcher.ensure_profile_launcher(sys.executable)
+    runner = worker_launcher_runner_path().read_text(encoding="utf-8")
+
+    assert changed is True
+    assert launcher == worker_launcher_path()
+    assert worker_python_path().read_text(encoding="utf-8").strip() == str(
+        Path(sys.executable).resolve()
+    )
+    assert "WORKGATE_WORKER_STATE_DIR" in runner
+    assert WORKER_DATA_DIR_ENV in runner
+    assert 'environment["PYTHONPATH"] = str(runtime)' in runner
+    assert "os.execve(" in runner
+    assert "remote_worker.compat" not in runner
+    if os.name != "nt":
+        assert launcher.stat().st_mode & 0o777 == 0o700
+
+    same_launcher, changed_again = profile_launcher.ensure_profile_launcher(
+        sys.executable
+    )
+
+    assert same_launcher == launcher
+    assert changed_again is False
+
+
+def test_profile_launcher_idempotency_compares_exact_crlf_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(
+        "WORKGATE_WORKER_STATE_DIR", str(tmp_path / "worker state")
+    )
+    monkeypatch.setenv(WORKER_DATA_DIR_ENV, str(tmp_path / "worker data"))
+    launcher_text = "first\r\nsecond\r\n"
+    if os.name == "nt":
+        monkeypatch.setattr(
+            profile_launcher, "_windows_launcher_text", lambda: launcher_text
+        )
+    else:
+        monkeypatch.setattr(
+            profile_launcher, "_posix_launcher_text", lambda: launcher_text
+        )
+
+    launcher, changed = profile_launcher.ensure_profile_launcher(sys.executable)
+    same_launcher, changed_again = profile_launcher.ensure_profile_launcher(
+        sys.executable
+    )
+
+    assert launcher.read_bytes() == launcher_text.encode("utf-8")
+    assert same_launcher == launcher
+    assert changed is True
+    assert changed_again is False
+
+
+def test_profile_launcher_reconnect_command_validates_profile_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WORKER_DATA_DIR_ENV, str(tmp_path / "worker data"))
+
+    command = profile_launcher.profile_reconnect_command("p_abcdefgh")
+    if os.name == "nt":
+        assert command == subprocess.list2cmdline(
+            [str(worker_launcher_path()), "p_abcdefgh"]
+        )
+    else:
+        assert shlex.split(command) == [
+            str(worker_launcher_path()),
+            "p_abcdefgh",
+        ]
+
+    with pytest.raises(ValueError, match="profile id"):
+        profile_launcher.profile_reconnect_command("bad")
 
 
 def test_reconnect_command_formatter_uses_windows_cmd_quoting() -> None:

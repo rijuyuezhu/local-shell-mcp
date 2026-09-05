@@ -83,7 +83,13 @@ def generate_env_example() -> str:
         for spec in specs_by_section[section]:
             for comment in _setting_comment_lines(spec):
                 lines.append(f"# {comment}")
-            lines.append(_env_line(spec.env_var, spec.default))
+            if spec.dynamic_default_label:
+                lines.append(
+                    f"# Default when omitted: {spec.dynamic_default_label}."
+                )
+                lines.append(f"# {_env_line(spec.env_var, spec.example)}")
+            else:
+                lines.append(_env_line(spec.env_var, spec.example))
 
     lines.extend(["", "# Optional Cloudflare tunnel helper settings."])
     for name, default, help_text in TUNNEL_HELPER_SPECS:
@@ -135,11 +141,18 @@ def generate_yaml_example() -> str:
         for spec in specs_by_section[section]:
             for comment in _setting_comment_lines(spec):
                 lines.append(f"# {comment}")
-            value = _yaml_scalar(spec.default)
+            if spec.dynamic_default_label:
+                lines.append(
+                    f"# Default when omitted: {spec.dynamic_default_label}."
+                )
+            value = _yaml_scalar(spec.example)
             if "\n" in value:
-                lines.append(f"{spec.name}:{value}")
+                rendered = f"{spec.name}:{value}"
             else:
-                lines.append(f"{spec.name}: {value}")
+                rendered = f"{spec.name}: {value}"
+            lines.append(
+                f"# {rendered}" if spec.dynamic_default_label else rendered
+            )
 
     return "\n".join(lines) + "\n"
 
@@ -178,14 +191,24 @@ def _type_label(spec: SettingSpec) -> str:
 
 def _setting_doc(spec: SettingSpec) -> dict[str, Any]:
     """Return one setting record for generated configuration reference JSON."""
+    default = (
+        spec.dynamic_default_label
+        if spec.dynamic_default_label
+        else _jsonable_default(spec.default)
+    )
+    default_display = (
+        spec.dynamic_default_label
+        if spec.dynamic_default_label
+        else _display_default(spec.default)
+    )
     return {
         "name": spec.name,
         "section": spec.section,
         "cli": spec.cli_flag,
         "unset_cli": spec.unset_cli_flag if spec.is_nullable else None,
         "env": spec.env_var,
-        "default": _jsonable_default(spec.default),
-        "default_display": _display_default(spec.default),
+        "default": default,
+        "default_display": default_display,
         "type": _type_label(spec),
         "choices": list(spec.choices or []),
         "nullable": spec.is_nullable,
@@ -208,7 +231,7 @@ def _setting_row(spec: SettingSpec) -> list[Any]:
         {"lines": cli_lines},
         _code(spec.env_var),
         _type_label(spec),
-        _code(_display_default(spec.default)),
+        _code(spec.dynamic_default_label or _display_default(spec.default)),
         spec.help,
     ]
 

@@ -17,10 +17,10 @@ To retrieve a retained full sanitized value, request one specific entry with `in
 By default, local audit state is under:
 
 ```text
-/workspace/.workgate/audit_log/
+${XDG_STATE_HOME:-~/.local/state}/workgate/audit_log/
 ```
 
-The location follows `WORKGATE_STATE_DIR`. A remote worker keeps its own audit history, which is selected through the same session-oriented UI and tool flow.
+This is the Linux default; macOS and Windows use their native Workgate state location. The location follows `WORKGATE_STATE_DIR` when that setting is explicitly overridden. A remote worker keeps its own audit history, which is selected through the same session-oriented UI and tool flow.
 
 Do not publish this directory, attach it to public bug reports, or assume redaction removed every sensitive project value.
 

@@ -8,13 +8,17 @@ NAME=""
 WORKDIR=""
 PROFILE_ID=""
 BACKGROUND=0
+SYSTEM_TMPDIR="${TMPDIR:-}"
 TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
-STATE_DIR="${WORKGATE_WORKER_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/workgate-worker}"
+UV_STORED=""
+STATE_DIR=""
+DATA_DIR=""
 RUNTIME_DIGEST=""
 RUNTIME_VERSION=""
 RUNTIME_DIR=""
+RUNTIME_PYTHON=""
 RUNTIME_METADATA=""
 LAUNCHER=""
 PROFILE_DIR=""
@@ -32,6 +36,191 @@ die() {
 
 have() {
   command -v "$1" >/dev/null 2>&1
+}
+
+absolute_env_or_empty() {
+  case "${1:-}" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s\n' "" ;;
+  esac
+}
+
+is_windows_shell() {
+  case "${1:-}" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+windows_absolute_env_or_empty() {
+  local value="${1:-}"
+  case "$value" in
+    [A-Za-z]:[\\/]*|/*) ;;
+    *) printf '%s\n' ""; return 0 ;;
+  esac
+  if have cygpath; then
+    cygpath -m "$value" 2>/dev/null || printf '%s\n' ""
+  else
+    printf '%s\n' "$value" | tr '\\' '/'
+  fi
+}
+
+configure_app_dirs() {
+  local platform xdg_state xdg_data local_appdata user_profile
+  local default_state default_data
+  platform="$(uname -s 2>/dev/null || true)"
+
+  if [ "$platform" = "Darwin" ]; then
+    default_state="$HOME/Library/Application Support/workgate/state/worker"
+    default_data="$HOME/Library/Application Support/workgate/data/worker"
+  elif is_windows_shell "$platform"; then
+    local_appdata="$(windows_absolute_env_or_empty "${LOCALAPPDATA:-}")"
+    if [ -z "$local_appdata" ]; then
+      user_profile="$(windows_absolute_env_or_empty "${USERPROFILE:-${HOME:-}}")"
+      [ -n "$user_profile" ] || die "cannot determine the Windows user profile directory"
+      local_appdata="$user_profile/AppData/Local"
+    fi
+    default_state="$local_appdata/workgate/state/worker"
+    default_data="$local_appdata/workgate/data/worker"
+  else
+    xdg_state="$(absolute_env_or_empty "${XDG_STATE_HOME:-}")"
+    xdg_data="$(absolute_env_or_empty "${XDG_DATA_HOME:-}")"
+    default_state="${xdg_state:-$HOME/.local/state}/workgate/worker"
+    default_data="${xdg_data:-$HOME/.local/share}/workgate/worker"
+  fi
+
+  STATE_DIR="${WORKGATE_WORKER_STATE_DIR:-$default_state}"
+  if [ -n "${WORKGATE_WORKER_DATA_DIR:-}" ]; then
+    DATA_DIR="$WORKGATE_WORKER_DATA_DIR"
+  elif [ -n "${WORKGATE_WORKER_STATE_DIR:-}" ]; then
+    # Compatibility: the legacy state override also owned runtime installation data.
+    DATA_DIR="$WORKGATE_WORKER_STATE_DIR"
+  else
+    DATA_DIR="$default_data"
+  fi
+}
+
+normalize_tmp_candidate() {
+  local platform="$1" value="${2:-}"
+  [ -n "$value" ] || return 0
+  if is_windows_shell "$platform"; then
+    case "$value" in
+      [A-Za-z]:[\\/]*|/*) windows_absolute_env_or_empty "$value" ;;
+      *) printf '%s\n' "$PWD/$value" ;;
+    esac
+  else
+    case "$value" in
+      /*) printf '%s\n' "$value" ;;
+      *) printf '%s\n' "$PWD/$value" ;;
+    esac
+  fi
+}
+
+system_tmpdir_is_suitable() {
+  local candidate="${1:-}" probe
+  [ -n "$candidate" ] || return 1
+  # Match tempfile._get_default_tempdir(): accept only after an actual
+  # create/write/remove probe, rather than trusting permission metadata.
+  probe="$(mktemp "$candidate/.workgate-temp.XXXXXXXX" 2>/dev/null)" || return 1
+  if printf 'blat' > "$probe" 2>/dev/null && rm -f "$probe" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$probe" 2>/dev/null || true
+  return 1
+}
+
+normalize_system_tmpdir() {
+  local platform raw candidate user_home system_root current_drive native_pwd
+  local -a candidates
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    # Keep this order aligned with CPython tempfile._candidate_tempdir_list().
+    if [ -n "${USERPROFILE:-}" ]; then
+      user_home="$USERPROFILE"
+    elif [ -n "${HOMEPATH:-}" ]; then
+      user_home="${HOMEDRIVE:-}${HOMEPATH}"
+    else
+      user_home=""
+    fi
+    system_root="${SYSTEMROOT:-${SystemRoot:-%SYSTEMROOT%}}"
+    current_drive="${SYSTEMDRIVE:-C:}"
+    if native_pwd="$(pwd -W 2>/dev/null)"; then
+      case "$native_pwd" in
+        [A-Za-z]:[\\/]*) current_drive="${native_pwd:0:2}" ;;
+      esac
+    fi
+    candidates=(
+      "$SYSTEM_TMPDIR" "${TEMP:-}" "${TMP:-}"
+      "${user_home:+$user_home/AppData/Local/Temp}"
+      "$system_root/Temp"
+      "C:/temp" "C:/tmp" "$current_drive/temp" "$current_drive/tmp" "$PWD"
+    )
+  else
+    candidates=(
+      "$SYSTEM_TMPDIR" "${TEMP:-}" "${TMP:-}"
+      "/tmp" "/var/tmp" "/usr/tmp" "$PWD"
+    )
+  fi
+  for raw in "${candidates[@]}"; do
+    candidate="$(normalize_tmp_candidate "$platform" "$raw")"
+    if [ -n "$candidate" ] && system_tmpdir_is_suitable "$candidate"; then
+      SYSTEM_TMPDIR="$candidate"
+      return 0
+    fi
+  done
+  die "cannot determine a usable system temporary directory"
+}
+
+private_dir_is_suitable() {
+  local mode
+  [ -n "${1:-}" ] && [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] && [ -w "$1" ] && [ -x "$1" ] || return 1
+  if mode="$(stat -c '%a' "$1" 2>/dev/null)"; then
+    [ "$mode" = "700" ]
+    return
+  fi
+  if mode="$(stat -f '%Lp' "$1" 2>/dev/null)"; then
+    [ "$mode" = "700" ]
+    return
+  fi
+  return 1
+}
+
+prepare_private_persistent_dir() {
+  local path="$1" label="$2" platform
+  platform="$(uname -s 2>/dev/null || true)"
+  [ ! -L "$path" ] || die "$label directory is unsafe"
+  mkdir -p "$path" || die "cannot create $label directory"
+  if is_windows_shell "$platform"; then
+    (cd "$path" && pwd -P) || die "cannot resolve $label directory"
+    return
+  fi
+  [ -d "$path" ] && [ ! -L "$path" ] && [ -O "$path" ] || die "$label directory is unsafe"
+  chmod 700 "$path" || die "cannot make $label directory private"
+  private_dir_is_suitable "$path" || die "$label directory is unsafe"
+  (cd "$path" && pwd -P) || die "cannot resolve $label directory"
+}
+
+create_bootstrap_tmpdir() {
+  local platform runtime_base xdg_runtime
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    TMPDIR="$(mktemp -d "$SYSTEM_TMPDIR/workgate-worker-bootstrap.XXXXXX")"
+    chmod 700 "$TMPDIR" 2>/dev/null || true
+    return
+  else
+    xdg_runtime="$(absolute_env_or_empty "${XDG_RUNTIME_DIR:-}")"
+    if private_dir_is_suitable "$xdg_runtime"; then
+      runtime_base="$xdg_runtime/workgate"
+    else
+      TMPDIR="$(mktemp -d "$SYSTEM_TMPDIR/workgate-worker-bootstrap.XXXXXX")"
+      chmod 700 "$TMPDIR" || die "cannot make worker bootstrap temp directory private"
+      return
+    fi
+  fi
+  mkdir -p "$runtime_base"
+  [ -d "$runtime_base" ] && [ ! -L "$runtime_base" ] && [ -O "$runtime_base" ] || die "worker runtime directory is unsafe"
+  chmod 700 "$runtime_base" || die "cannot make worker runtime directory private"
+  TMPDIR="$(mktemp -d "$runtime_base/worker-bootstrap.XXXXXX")"
 }
 
 parse_args() {
@@ -67,20 +256,9 @@ raise SystemExit(0 if sys.version_info >= (3, 14) else 1)
 PY
 }
 
-find_existing_python() {
-  local candidate
-  for candidate in python3.14 python3; do
-    if have "$candidate" && python_supports_worker "$candidate"; then
-      PYTHON_BIN="$(command -v "$candidate")"
-      return 0
-    fi
-  done
-  return 1
-}
-
 download_temporary_uv() {
   mkdir -p "$TMPDIR/uv-bin"
-  echo "uv not found; downloading a temporary uv into the worker state directory..." >&2
+  echo "uv not found; downloading a temporary uv for worker bootstrap..." >&2
   curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="$TMPDIR/uv-bin" sh >/dev/null
   if [ -x "$TMPDIR/uv-bin/uv" ]; then
     UV_BIN="$TMPDIR/uv-bin/uv"
@@ -100,21 +278,32 @@ ensure_uv() {
 }
 
 find_or_install_python() {
-  if find_existing_python; then
-    return 0
-  fi
-
-  if ensure_uv; then
-    if ! PYTHON_BIN="$($UV_BIN python find 3.14 2>/dev/null)"; then
-      echo "Python 3.14 not found; installing with uv..." >&2
-      "$UV_BIN" python install 3.14 >/dev/null
-      PYTHON_BIN="$($UV_BIN python find 3.14)"
-    fi
+  if ! PYTHON_BIN="$($UV_BIN python find 3.14 2>/dev/null)"; then
+    echo "Python 3.14 not found; installing with uv..." >&2
+    "$UV_BIN" python install 3.14 >/dev/null
+    PYTHON_BIN="$($UV_BIN python find 3.14)"
   fi
 
   if [ -z "$PYTHON_BIN" ] || ! python_supports_worker "$PYTHON_BIN"; then
-    die "python >= 3.14 is required; install python3.14 or uv and retry"
+    die "uv could not provide a usable python >= 3.14"
   fi
+}
+
+persist_uv() {
+  local platform target temporary
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    target="$DATA_DIR/uv.exe"
+  else
+    target="$DATA_DIR/uv"
+  fi
+  temporary="$target.installing.$$"
+  if [ "$UV_BIN" != "$target" ]; then
+    cp "$UV_BIN" "$temporary"
+    chmod 700 "$temporary" 2>/dev/null || true
+    mv -f "$temporary" "$target"
+  fi
+  UV_STORED="$target"
 }
 
 resolve_workdir() {
@@ -128,7 +317,7 @@ PY
 }
 
 select_launcher_path() {
-  LAUNCHER="$($PYTHON_BIN - "$STATE_DIR" <<'PY'
+  LAUNCHER="$($PYTHON_BIN - "$DATA_DIR" <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -153,12 +342,13 @@ import sys
 if not re.fullmatch(r"p_[A-Za-z0-9_-]{8,64}", sys.argv[1]):
     raise SystemExit("invalid remote worker profile id")
 PY
-  PROFILE_DIR="$STATE_DIR/profiles/$PROFILE_ID"
+  local profile_root
+  profile_root="$(prepare_private_persistent_dir "$STATE_DIR/profiles" "worker profiles")"
+  PROFILE_DIR="$profile_root/$PROFILE_ID"
   if [ -f "$PROFILE_DIR/identity.json" ]; then
     die "worker profile already exists; reconnect with $LAUNCHER $PROFILE_ID"
   fi
-  mkdir -p "$PROFILE_DIR"
-  chmod 700 "$PROFILE_DIR" 2>/dev/null || true
+  PROFILE_DIR="$(prepare_private_persistent_dir "$PROFILE_DIR" "worker profile")"
 }
 
 install_launcher() {
@@ -166,8 +356,9 @@ install_launcher() {
   installed_launcher="$(
     cd "$RUNTIME_DIR"
     WORKGATE_WORKER_STATE_DIR="$STATE_DIR" \
-    PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-    "$PYTHON_BIN" - "$PYTHON_BIN" <<'PY'
+    WORKGATE_WORKER_DATA_DIR="$DATA_DIR" \
+    PYTHONPATH="$RUNTIME_DIR" \
+    "$RUNTIME_PYTHON" - "$PYTHON_BIN" <<'PY'
 import sys
 
 from workgate.remote_worker.profile_launcher import ensure_profile_launcher
@@ -238,10 +429,17 @@ PY
 }
 
 configure_runtime() {
+  local platform
   RUNTIME_DIGEST="$(cat "$TMPDIR/bundle-sha256")"
   RUNTIME_VERSION="$(cat "$TMPDIR/bundle-version")"
-  RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"
+  RUNTIME_DIR="$DATA_DIR/runtimes/$RUNTIME_DIGEST"
   RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    RUNTIME_PYTHON="$RUNTIME_DIR/.venv/Scripts/python.exe"
+  else
+    RUNTIME_PYTHON="$RUNTIME_DIR/.venv/bin/python"
+  fi
 }
 
 runtime_is_installed() {
@@ -262,10 +460,12 @@ try:
 except (OSError, ValueError, json.JSONDecodeError):
     raise SystemExit(1)
 required = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
+    "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -273,12 +473,16 @@ required = (
     "workgate/remote_worker/state.py",
     "workgate/remote_worker/worker.py",
 )
+runtime_python = runtime / (
+    ".venv/Scripts/python.exe" if sys.platform == "win32" else ".venv/bin/python"
+)
 valid = (
     isinstance(metadata, dict)
     and metadata.get("schema_version") == 1
     and metadata.get("bundle_version") == version
     and metadata.get("sha256") == digest
     and all((runtime / relative).is_file() for relative in required)
+    and runtime_python.is_file()
 )
 raise SystemExit(0 if valid else 1)
 PY
@@ -348,12 +552,14 @@ install_bundle() {
   "$PYTHON_BIN" - \
     "$TMPDIR/worker.tgz" \
     "$TMPDIR/bundle-url" \
-    "$STATE_DIR/install.lock" \
+    "$DATA_DIR/install.lock" \
     "$RUNTIME_DIR" \
     "$RUNTIME_METADATA" \
     "$(cat "$TMPDIR/bundle-version")" \
     "$(cat "$TMPDIR/bundle-sha256")" \
-    "$(cat "$TMPDIR/bundle-size")" <<'PY'
+    "$(cat "$TMPDIR/bundle-size")" \
+    "$UV_STORED" \
+    "$PYTHON_BIN" <<'PY'
 import contextlib
 import hashlib
 import json
@@ -378,6 +584,8 @@ from typing import BinaryIO
     version,
     expected_digest,
     expected_size,
+    uv_path,
+    python_path,
 ) = sys.argv[1:]
 archive = Path(archive_path)
 bundle_url = Path(bundle_url_path).read_text(encoding="utf-8")
@@ -389,10 +597,12 @@ state_dir = runtime.parent
 staging = state_dir / f"{expected_digest}.install.{uuid.uuid4().hex}"
 backup = state_dir / f"{expected_digest}.previous.{uuid.uuid4().hex}"
 required = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
+    "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -438,12 +648,18 @@ def runtime_is_complete() -> bool:
         decoded = json.loads(metadata.read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError):
         return False
+    runtime_python = runtime / (
+        ".venv/Scripts/python.exe"
+        if os.name == "nt"
+        else ".venv/bin/python"
+    )
     return (
         isinstance(decoded, dict)
         and decoded.get("schema_version") == 1
         and decoded.get("bundle_version") == version
         and decoded.get("sha256") == expected_digest
         and all((runtime / relative).is_file() for relative in required)
+        and runtime_python.is_file()
     )
 
 
@@ -545,6 +761,32 @@ with lock_file.open("a+b") as lock_handle, install_lock(lock_handle):
             if runtime.exists():
                 os.replace(runtime, backup)
             os.replace(staging, runtime)
+            runtime_python = runtime / (
+                ".venv/Scripts/python.exe"
+                if os.name == "nt"
+                else ".venv/bin/python"
+            )
+            sync_env = os.environ.copy()
+            sync_env["UV_PROJECT_ENVIRONMENT"] = str(runtime / ".venv")
+            sync_env.pop("VIRTUAL_ENV", None)
+            completed = subprocess.run(
+                [
+                    uv_path,
+                    "sync",
+                    "--locked",
+                    "--only-group",
+                    "worker",
+                    "--no-install-project",
+                    "--no-config",
+                    "--python",
+                    python_path,
+                ],
+                cwd=runtime,
+                env=sync_env,
+                check=False,
+            )
+            if completed.returncode or not runtime_python.is_file():
+                raise RuntimeError("worker dependency installation failed")
             temporary_metadata = metadata.with_name(
                 f"{metadata.name}.{uuid.uuid4().hex}.tmp"
             )
@@ -586,30 +828,34 @@ worker_args() {
 }
 
 start_worker() {
-  echo "Starting worker with $PYTHON_BIN..." >&2
+  echo "Starting worker with $RUNTIME_PYTHON..." >&2
   printf 'Worker profile: %s\nReconnect with:\n  %q %q\n' "$PROFILE_ID" "$LAUNCHER" "$PROFILE_ID" >&2
   export WORKGATE_WORKER_STATE_DIR="$STATE_DIR"
+  export WORKGATE_WORKER_DATA_DIR="$DATA_DIR"
   export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
-  export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH="$RUNTIME_DIR"
   worker_args
   cd "$RUNTIME_DIR"
   if [ "$BACKGROUND" = "1" ]; then
-    nohup "$PYTHON_BIN" -m workgate.remote_worker "${ARGS[@]}" > "$PROFILE_DIR/worker.log" 2>&1 &
+    nohup "$RUNTIME_PYTHON" -m workgate.remote_worker "${ARGS[@]}" > "$PROFILE_DIR/worker.log" 2>&1 &
     echo "workgate worker started in background. Log: $PROFILE_DIR/worker.log"
   else
-    exec "$PYTHON_BIN" -m workgate.remote_worker "${ARGS[@]}"
+    exec "$RUNTIME_PYTHON" -m workgate.remote_worker "${ARGS[@]}"
   fi
 }
 
 main() {
   parse_args "$@"
   require_basic_tools
-  mkdir -p "$STATE_DIR"
-  STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"
-  chmod 700 "$STATE_DIR" 2>/dev/null || true
-  TMPDIR="$(mktemp -d "$STATE_DIR/install.XXXXXX")"
+  configure_app_dirs
+  normalize_system_tmpdir
+  STATE_DIR="$(prepare_private_persistent_dir "$STATE_DIR" "worker state")"
+  DATA_DIR="$(prepare_private_persistent_dir "$DATA_DIR" "worker data")"
+  create_bootstrap_tmpdir
   trap cleanup EXIT
+  ensure_uv || die "uv is required for the worker runtime"
   find_or_install_python
+  persist_uv
   resolve_workdir
   select_launcher_path
   prepare_profile

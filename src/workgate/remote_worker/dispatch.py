@@ -36,10 +36,16 @@ def _audit_filters(args: dict[str, Any]) -> dict[str, Any]:
 async def _session_start(args: dict[str, Any]) -> Any:
     from workgate.ops.session import session_start_execute
 
+    target = str(args.get("target") or "local")
+    machine = args.get("machine")
+    if target != "local" or machine not in (None, ""):
+        raise ValueError(
+            "remote worker session_start accepts only local worker sessions"
+        )
     return await session_start_execute(
         str(args.get("workdir") or "."),
-        str(args.get("target") or "local"),
-        args.get("machine"),
+        "local",
+        None,
         args.get("label"),
     )
 
@@ -820,5 +826,5 @@ def build_worker_dispatcher(
 
 
 async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
-    """Execute one worker tool through a fresh compatibility dispatcher."""
+    """Execute one worker tool through a fresh worker dispatcher."""
     return await build_worker_dispatcher().execute(tool, args)

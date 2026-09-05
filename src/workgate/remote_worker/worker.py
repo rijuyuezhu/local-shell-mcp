@@ -280,33 +280,17 @@ def _worker_state_dir() -> Path:
     return worker_state_dir()
 
 
-def _normalized_env_path(path: str) -> str:
-    """Normalize an environment path without requiring the path to exist."""
-    expanded = os.path.expandvars(os.path.expanduser(path))
-    return os.path.abspath(expanded)
-
-
-def _env_is_absent_or_default(name: str, default: str) -> bool:
-    """Return whether a worker env path is unset or still the package default."""
-    value = os.getenv(name)
-    return not value or _normalized_env_path(value) == _normalized_env_path(
-        default
-    )
-
-
 def _configure_worker_runtime_env(
     workdir: str, profile_id: str | None = None
 ) -> None:
     """Configure worker-local runtime paths before loading normal settings."""
-    if _env_is_absent_or_default("WORKGATE_WORKSPACE_ROOT", "/workspace"):
-        os.environ["WORKGATE_WORKSPACE_ROOT"] = workdir
-    if _env_is_absent_or_default("WORKGATE_STATE_DIR", "/workspace/.workgate"):
-        runtime_state = (
-            worker_profile_dir(profile_id) / "state"
-            if profile_id is not None
-            else _worker_state_dir() / "runtime"
-        )
-        os.environ["WORKGATE_STATE_DIR"] = str(runtime_state)
+    os.environ["WORKGATE_WORKSPACE_ROOT"] = workdir
+    runtime_state = (
+        worker_profile_dir(profile_id) / "state"
+        if profile_id is not None
+        else _worker_state_dir() / "runtime"
+    )
+    os.environ["WORKGATE_STATE_DIR"] = str(runtime_state)
     os.environ["WORKGATE_ALLOW_FULL_CONTROL"] = "true"
 
 

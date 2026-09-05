@@ -1,3 +1,5 @@
+import os
+
 from workgate.config.settings import (
     initialize_runtime_directories,
     load_settings,
@@ -6,12 +8,13 @@ from workgate.config.settings import (
 
 def test_settings_precedence_config_env_cli(monkeypatch, tmp_path):
     config = tmp_path / "config.yaml"
+    config_workspace = tmp_path / "config-workspace"
     config.write_text(
-        """
+        f"""
 host: 0.0.0.0
 port: 1111
 mode: http
-workspace_root: config-workspace
+workspace_root: {config_workspace}
 auth_mode: oauth
 """.strip()
     )
@@ -50,6 +53,9 @@ def test_loading_settings_does_not_create_runtime_directories(tmp_path):
     assert workspace.is_dir()
     assert state.is_dir()
     assert settings.audit_log_path.parent.is_dir()
+    if os.name != "nt":
+        assert state.stat().st_mode & 0o777 == 0o700
+        assert settings.audit_log_path.parent.stat().st_mode & 0o777 == 0o700
 
 
 def test_settings_rejects_non_mapping_config(tmp_path):

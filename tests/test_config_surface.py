@@ -1,8 +1,10 @@
+import argparse
 from dataclasses import dataclass
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 from typing import Annotated, Any, Literal
 
 import pytest
+import yaml
 
 import workgate.config.settings as settings_module
 import workgate.config.surface as surface
@@ -24,6 +26,22 @@ def test_path_defaults_use_portable_posix_separators():
 
     assert surface.default_to_string(value) == "/workspace/.workgate"
     assert surface.yaml_default(value) == "/workspace/.workgate"
+
+
+def test_surface_helpers_cover_passthrough_and_failure_paths(monkeypatch):
+    assert surface.yaml_default("literal") == "literal"
+
+    action = surface.BoolChoiceAction(["--flag"], "flag")
+    with pytest.raises(
+        argparse.ArgumentTypeError, match="Invalid boolean value"
+    ):
+        action(argparse.ArgumentParser(), argparse.Namespace(), "invalid")
+
+    incomplete_specs = dict(surface.SPECS_BY_NAME)
+    incomplete_specs.pop("port")
+    monkeypatch.setattr(surface, "SPECS_BY_NAME", incomplete_specs)
+    with pytest.raises(RuntimeError, match="Setting spec mismatch"):
+        surface.validate_setting_specs()
 
 
 def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
@@ -125,3 +143,107 @@ def test_remote_http_transfer_limits_and_config_file_errors(tmp_path):
     empty = tmp_path / "empty.yaml"
     empty.write_text("", encoding="utf-8")
     assert settings_module.read_config_file(empty) == {}
+
+
+def test_workspace_defaults_to_invocation_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
+
+    assert load_settings().workspace_root == tmp_path.resolve()
+
+
+def test_default_config_is_discovered_from_platform_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_dir = settings_module.app_paths().config_dir
+    config_dir.mkdir(parents=True)
+    workspace = tmp_path / "configured-workspace"
+    (config_dir / "config.yaml").write_text(
+        yaml.safe_dump({"workspace_root": str(workspace), "port": 8123}),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+
+    settings = load_settings()
+
+    assert settings.workspace_root == workspace
+    assert settings.port == 8123
+
+
+def test_worker_runtime_does_not_discover_ambient_default_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_dir = settings_module.app_paths().config_dir
+    config_dir.mkdir(parents=True)
+    ambient_workspace = tmp_path / "ambient-workspace"
+    (config_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {"workspace_root": str(ambient_workspace), "port": 8123}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setenv("WORKGATE_REMOTE_WORKER_RUNTIME", "1")
+
+    settings = load_settings()
+
+    assert settings.workspace_root == tmp_path.resolve()
+    assert settings.port != 8123
+
+
+def test_worker_runtime_honors_explicit_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "worker.yaml"
+    workspace = tmp_path / "configured-workspace"
+    config.write_text(
+        yaml.safe_dump({"workspace_root": str(workspace), "port": 8123}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WORKGATE_REMOTE_WORKER_RUNTIME", "1")
+    monkeypatch.setenv("WORKGATE_CONFIG", str(config))
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+
+    settings = load_settings()
+
+    assert settings.workspace_root == workspace
+    assert settings.port == 8123
+
+
+def test_yaml_paths_must_be_absolute_after_expansion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+    config = tmp_path / "config.yaml"
+    config.write_text('workspace_root: "./relative"\n', encoding="utf-8")
+
+    with pytest.raises(
+        ValueError, match="workspace_root must be an absolute path"
+    ):
+        load_settings(config)
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    config.write_text('workspace_root: "~/project"\n', encoding="utf-8")
+    assert load_settings(config).workspace_root == home / "project"
+
+
+def test_relative_env_and_cli_paths_remain_invocation_relative(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", "env-workspace")
+
+    assert load_settings().workspace_root == tmp_path / "env-workspace"
+    assert load_settings(
+        overrides={"workspace_root": "cli-workspace"}
+    ).workspace_root == (tmp_path / "cli-workspace")

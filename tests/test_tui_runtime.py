@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -49,16 +50,57 @@ def test_runtime_discovery_uses_explicit_package_and_source_roots(
     assert sidecar in runtime._tui_sidecar_candidates()
 
 
-def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(
+def test_same_regular_file_content_rejects_unsafe_or_mismatched_inputs(
     tmp_path: Path,
+) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    right.write_bytes(b"a")
+
+    assert runtime._same_regular_file_content(left, right) is False
+
+    left.mkdir()
+    assert runtime._same_regular_file_content(left, right) is False
+
+    left.rmdir()
+    left.write_bytes(b"bb")
+    assert runtime._same_regular_file_content(left, right) is False
+
+
+def test_same_regular_file_content_compares_bytes(tmp_path: Path) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    left.write_bytes(b"same")
+    right.write_bytes(b"same")
+
+    assert runtime._same_regular_file_content(left, right) is True
+
+    right.write_bytes(b"diff")
+    assert runtime._same_regular_file_content(left, right) is False
+
+
+def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     payload = tmp_path / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
     expected = b"#!/bin/sh\necho tui\n"
     with gzip.open(payload, "wb") as handle:
         handle.write(expected)
+    Path(f"{payload}.sha256").write_bytes(
+        (hashlib.sha256(expected).hexdigest() + "\n").encode("ascii")
+    )
 
     first = runtime.materialize_embedded_tui(
         tmp_path / "state", payload=payload
+    )
+
+    def extraction_should_not_run(_source: Path, _destination: Path) -> None:
+        raise AssertionError(
+            "validated TUI cache should use the digest fast path"
+        )
+
+    monkeypatch.setattr(
+        runtime, "_copy_bounded_gzip", extraction_should_not_run
     )
     second = runtime.materialize_embedded_tui(
         tmp_path / "state", payload=payload
@@ -79,6 +121,58 @@ def test_materialize_embedded_tui_rejects_empty_payload(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="empty"):
         runtime.materialize_embedded_tui(tmp_path / "state", payload=payload)
+
+
+def test_materialize_embedded_tui_replaces_tampered_cache(
+    tmp_path: Path,
+) -> None:
+    payload = tmp_path / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
+    expected = b"#!/bin/sh\necho trusted\n"
+    with gzip.open(payload, "wb") as handle:
+        handle.write(expected)
+    Path(f"{payload}.sha256").write_bytes(
+        (hashlib.sha256(expected).hexdigest() + "\n").encode("ascii")
+    )
+
+    cache = tmp_path / "cache" / "ui-runtime"
+    target_dir = cache / runtime.__version__
+    target_dir.mkdir(parents=True)
+    target = target_dir / runtime.TUI_EXECUTABLE_NAME
+    target.write_bytes(b"#!/bin/sh\necho attacker\n")
+    if os.name != "nt":
+        target.chmod(0o700)
+
+    resolved = runtime.materialize_embedded_tui(cache, payload=payload)
+
+    assert resolved == target
+    assert target.read_bytes() == expected
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="symlink creation requires privileges on Windows"
+)
+def test_materialize_embedded_tui_replaces_symlink_cache_target(
+    tmp_path: Path,
+) -> None:
+    payload = tmp_path / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
+    expected = b"#!/bin/sh\necho trusted\n"
+    with gzip.open(payload, "wb") as handle:
+        handle.write(expected)
+
+    cache = tmp_path / "cache" / "ui-runtime"
+    target_dir = cache / runtime.__version__
+    target_dir.mkdir(parents=True)
+    attacker = tmp_path / "attacker"
+    attacker.write_bytes(b"attacker")
+    target = target_dir / runtime.TUI_EXECUTABLE_NAME
+    target.symlink_to(attacker)
+
+    resolved = runtime.materialize_embedded_tui(cache, payload=payload)
+
+    assert resolved == target
+    assert not target.is_symlink()
+    assert target.read_bytes() == expected
+    assert attacker.read_bytes() == b"attacker"
 
 
 def test_split_tui_command_preserves_windows_quoted_path() -> None:

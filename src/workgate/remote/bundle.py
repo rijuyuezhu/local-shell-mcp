@@ -1,4 +1,4 @@
-"""Build and serve the source-only runtime used by remote workers."""
+"""Build and serve the trimmed uv-managed runtime used by remote workers."""
 
 import fnmatch
 import functools
@@ -16,10 +16,12 @@ from starlette.responses import JSONResponse, Response
 from .. import __version__
 from .constants import REMOTE_WORKER_BUNDLE_PATH
 
-# Keep the worker bundle Python-only and source-only. These patterns are a
-# worker-runtime manifest, not a general workgate package snapshot.
+# Keep the worker bundle source-trimmed. These patterns are a worker-runtime
+# manifest, not a general workgate package snapshot. Project metadata is added
+# separately so uv can install only the locked worker dependency group.
 _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "__init__.py",
+    "app_paths.py",
     "audit/*.py",
     "errors.py",
     "version.py",
@@ -120,8 +122,9 @@ def _normalized_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
 
 @functools.lru_cache(maxsize=1)
 def worker_bundle_bytes() -> bytes:
-    """Return one deterministic, source-only worker runtime archive."""
+    """Return one deterministic worker runtime archive with locked metadata."""
     package_root = Path(__file__).resolve().parents[1]
+    project_root = package_root.parents[1]
     buffer = BytesIO()
     with (
         gzip.GzipFile(
@@ -133,6 +136,14 @@ def worker_bundle_bytes() -> bytes:
             tar.add(
                 path,
                 arcname=path.relative_to(package_root.parent).as_posix(),
+                recursive=False,
+                filter=_normalized_tar_info,
+            )
+        for name in ("pyproject.toml", "uv.lock"):
+            path = project_root / name
+            tar.add(
+                path,
+                arcname=name,
                 recursive=False,
                 filter=_normalized_tar_info,
             )

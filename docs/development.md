@@ -92,7 +92,7 @@ journalctl --user -u workgate.service -f -n 200
 Audit log:
 
 ```bash
-tail -F /workspace/.workgate/audit_log/audit.jsonl | jq -C --unbuffered .
+tail -F "${WORKGATE_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/workgate}/audit_log/audit.jsonl" | jq -C --unbuffered .
 ```
 
 Audit state can contain prompts, tool inputs, tool outputs, file contents, bounded JSONL previews, and recoverable sanitized payload objects. Credential-like values are redacted on a best-effort basis before storage, but both JSONL and the payload directory must still be treated as sensitive.
