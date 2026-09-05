@@ -213,3 +213,81 @@ async def test_unbound_search_registry_rejects_bound_handler_use():
     registry = SearchToolRegistry()
     with pytest.raises(RuntimeError, match="Search service is not bound"):
         await registry._bound_search("SESSION01", "needle")
+
+
+@pytest.mark.asyncio
+async def test_unbound_search_registry_uses_direct_search_handler(monkeypatch):
+    calls = []
+    output = GrepSearchOutput(
+        ok=True,
+        matches=[],
+        displayed_lines=[],
+        count=0,
+        displayed_count=0,
+        context_radius=0,
+        skipped=0,
+        truncated=False,
+        stderr="",
+        numbered_content="",
+    )
+
+    async def fake_search_execute(
+        pattern,
+        paths,
+        cwd,
+        regex,
+        case_sensitive,
+        max_results,
+        session_id,
+        skip,
+        gitignore,
+    ):
+        calls.append(
+            {
+                "pattern": pattern,
+                "paths": paths,
+                "cwd": cwd,
+                "regex": regex,
+                "case_sensitive": case_sensitive,
+                "max_results": max_results,
+                "session_id": session_id,
+                "skip": skip,
+                "gitignore": gitignore,
+            }
+        )
+        return output
+
+    monkeypatch.setattr(
+        "local_shell_mcp.tools.registry.search.search_execute",
+        fake_search_execute,
+    )
+    registry = SearchToolRegistry()
+    direct_search = next(
+        tool for tool in registry._enabled_tools() if tool.name == "search"
+    )
+
+    result = await direct_search.func(
+        "SESSION01",
+        "needle",
+        ["src"],
+        False,
+        False,
+        17,
+        3,
+        False,
+    )
+
+    assert result == output
+    assert calls == [
+        {
+            "pattern": "needle",
+            "paths": ["src"],
+            "cwd": ".",
+            "regex": False,
+            "case_sensitive": False,
+            "max_results": 17,
+            "session_id": "SESSION01",
+            "skip": 3,
+            "gitignore": False,
+        }
+    ]

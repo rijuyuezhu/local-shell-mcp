@@ -7,9 +7,9 @@ audit, Skill, and human-interface capabilities for MCP clients, but they are no
 longer drop-in replacements for one another.
 
 This page compares the product models and major user-visible capabilities. It is
-not a claim that one branch contains every commit from the other. The comparison
-was reviewed against fork release `v4.3.0` and upstream release `v3.1.4` on
-July 31, 2026.
+not a claim that one branch contains every commit from the other. The upstream
+column remains based on upstream release `v3.1.4`, reviewed on July 31, 2026;
+the fork column is maintained with the current repository surface as it evolves.
 
 ## The main distinction
 
@@ -40,7 +40,7 @@ state recovery, and UI behavior in each project.
 | Audit and sensitive data | Applies uniform credential redaction, bounded records, session-aware local/remote queries, and optional recovery of one retained sanitized payload through the separate `audit:full` scope. | Provides audit inspection within its own direct-operation and machine model. | The fork favors conservative retention and explicit recovery authorization rather than retaining unrestricted raw inputs. |
 | Resource lifecycle | Adds bounded durable sessions and snapshots, cross-process admission locks, managed-job and persistent-shell liveness leases, bounded-command descendant containment, and fail-closed teardown when ownership is uncertain. | Maintains its own command, job, shell, worker, and transfer limits without the fork's session-owned lifecycle layer. | The fork accepts more serialization and fail-closed behavior in exchange for stronger coordination when several server processes share one state directory. |
 | Documentation | Maintains one canonical English documentation set. | Maintains multilingual documentation and localized navigation. | Upstream currently serves more documentation languages; the fork avoids duplicated translations that could become stale. |
-| Releases | Uses an independent 4.x release line, Python 3.14+, executables, VSIX assets, and platform wheels with embedded OpenTUI runtimes. | Uses its independent 3.x release line and currently supports Python 3.11+. | Packages, configuration, state, and release assets must not be mixed between the two projects. |
+| Releases | Uses an independent 4.x release line, Python 3.14+, executables, and platform wheels with embedded OpenTUI runtimes. | Uses its independent 3.x release line and currently supports Python 3.11+. | Packages, configuration, state, and release assets must not be mixed between the two projects. |
 
 ## Shared foundation
 

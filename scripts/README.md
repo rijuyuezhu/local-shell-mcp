@@ -14,11 +14,11 @@ Only two tracked files may live directly under `scripts/`:
 | `README.md` | Records the ownership, lifecycle, and compatibility contract for repository automation. | The ownership map describes the complete `scripts` tree rather than one automation lifecycle. |
 | `run-with-cloudflare-tunnel.sh` | Loads checkout configuration, starts the MCP process, runs the named Cloudflare tunnel, and cleans up the background server. | Quickstart, tunnel setup, and the documented systemd service invoke this exact checkout path, so it is a stable user-facing deployment interface rather than internal automation. |
 
-The root allowlist is enforced by tests. New repository automation must be placed
-in `generation`, `release`, `testing`, or `validation`; adding another root script
-requires an explicit public deployment compatibility rationale and matching
-consumer-contract tests. The Cloudflare helper must remain a valid executable
-Bash program in a source checkout.
+New repository automation should normally be placed in `generation`, `release`,
+`testing`, or `validation`; adding another root script requires an explicit public
+deployment compatibility rationale and behavior-level consumer coverage where
+appropriate. The Cloudflare helper is smoke-tested as valid Bash and must retain
+its executable Git mode in a source checkout.
 
 ## `release`
 
