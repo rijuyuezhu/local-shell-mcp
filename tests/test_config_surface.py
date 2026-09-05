@@ -1,8 +1,10 @@
+import argparse
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Annotated, Any, Literal
 
 import pytest
+import yaml
 
 import workgate.config.settings as settings_module
 import workgate.config.surface as surface
@@ -24,6 +26,22 @@ def test_path_defaults_use_portable_posix_separators():
 
     assert surface.default_to_string(value) == "/workspace/.workgate"
     assert surface.yaml_default(value) == "/workspace/.workgate"
+
+
+def test_surface_helpers_cover_passthrough_and_failure_paths(monkeypatch):
+    assert surface.yaml_default("literal") == "literal"
+
+    action = surface.BoolChoiceAction(["--flag"], "flag")
+    with pytest.raises(
+        argparse.ArgumentTypeError, match="Invalid boolean value"
+    ):
+        action(argparse.ArgumentParser(), argparse.Namespace(), "invalid")
+
+    incomplete_specs = dict(surface.SPECS_BY_NAME)
+    incomplete_specs.pop("port")
+    monkeypatch.setattr(surface, "SPECS_BY_NAME", incomplete_specs)
+    with pytest.raises(RuntimeError, match="Setting spec mismatch"):
+        surface.validate_setting_specs()
 
 
 def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
@@ -145,7 +163,8 @@ def test_default_config_is_discovered_from_platform_config_dir(
     config_dir.mkdir(parents=True)
     workspace = tmp_path / "configured-workspace"
     (config_dir / "config.yaml").write_text(
-        f'workspace_root: "{workspace}"\nport: 8123\n', encoding="utf-8"
+        yaml.safe_dump({"workspace_root": str(workspace), "port": 8123}),
+        encoding="utf-8",
     )
     monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
     monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)

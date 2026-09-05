@@ -1,9 +1,17 @@
+import atexit
+import itertools
+import shutil
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
 from workgate.config.settings import clear_settings_cache
+
+_SYSTEM_TMP_ROOT = Path(tempfile.mkdtemp(prefix="workgate-tests-"))
+_SYSTEM_TMP_SEQUENCE = itertools.count()
+atexit.register(shutil.rmtree, _SYSTEM_TMP_ROOT, ignore_errors=True)
 
 
 def _reset_managed_deferred_sequence(job_recovery) -> None:
@@ -15,7 +23,10 @@ def _reset_managed_deferred_sequence(job_recovery) -> None:
 def isolated_runtime_paths(monkeypatch, tmp_path):
     state_dir = tmp_path / ".workgate"
     runtime_dir = tmp_path / ".xdg-runtime"
-    system_tmp = tmp_path / ".system-tmp"
+    # Keep the process temp root isolated without nesting it under pytest's
+    # already-long tmp_path. tmux appends its own socket suffix under
+    # TMUX_TMPDIR and Unix-domain socket paths have a small fixed limit.
+    system_tmp = _SYSTEM_TMP_ROOT / str(next(_SYSTEM_TMP_SEQUENCE))
     runtime_dir.mkdir()
     system_tmp.mkdir()
     monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path / "workspace"))

@@ -1321,10 +1321,6 @@ def test_join_script_installs_persistent_verified_runtime():
     assert 'rm -rf "$RUNTIME_DIR"' not in script
 
 
-@pytest.mark.skipif(
-    not shutil.which("bash"),
-    reason="requires bash to exercise the bootstrap path policy",
-)
 @pytest.mark.parametrize(
     ("windows_env", "expected_base"),
     [
@@ -1359,18 +1355,23 @@ def test_join_script_uses_native_windows_worker_namespaces(
     probe = (
         prefix
         + """\
+uname() { printf 'MINGW64_NT-10.0\\n'; }
 configure_app_dirs
 printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
 """
     )
 
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    fake_uname = bin_dir / "uname"
-    fake_uname.write_text(
-        "#!/bin/sh\nprintf 'MINGW64_NT-10.0\\n'\n", encoding="utf-8"
-    )
-    fake_uname.chmod(0o700)
+    if os.name == "nt":
+        bash = None
+        git = shutil.which("git")
+        if git:
+            git_bash = Path(git).resolve().parent.parent / "bin" / "bash.exe"
+            if git_bash.is_file():
+                bash = str(git_bash)
+    else:
+        bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("requires bash to exercise the bootstrap path policy")
 
     env = os.environ.copy()
     for name in (
@@ -1382,10 +1383,9 @@ printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
         env.pop(name, None)
     env.update(windows_env)
     env["TEMP"] = "C:/Temp"
-    env["PATH"] = os.pathsep.join((str(bin_dir), env.get("PATH", "")))
 
     completed = subprocess.run(
-        ["bash", "-c", probe],
+        [bash, "-c", probe],
         env=env,
         capture_output=True,
         text=True,
