@@ -1,4 +1,4 @@
-"""Dependency-leaf filesystem paths for the source-only worker runtime."""
+"""Dependency-leaf filesystem paths for the trimmed worker runtime."""
 
 import os
 import re
@@ -8,14 +8,14 @@ from pathlib import Path
 _APP_NAME = "workgate"
 
 
-def _expanded_absolute(value: str | None) -> Path | None:
-    """Expand an app-dir environment value only when it is absolute."""
+def _absolute_env_path(value: str | None) -> Path | None:
+    """Accept an app-dir environment value only when it is already absolute."""
     if not value:
         return None
-    expanded = Path(os.path.expandvars(os.path.expanduser(value)))
-    if not expanded.is_absolute():
+    path = Path(value)
+    if not path.is_absolute():
         return None
-    return expanded
+    return path
 
 
 def _default_worker_roots() -> tuple[Path, Path]:
@@ -25,17 +25,17 @@ def _default_worker_roots() -> tuple[Path, Path]:
         support = home / "Library" / "Application Support" / _APP_NAME
         return support / "state" / "worker", support / "data" / "worker"
     if sys.platform.startswith("win"):
-        local = _expanded_absolute(os.getenv("LOCALAPPDATA")) or (
+        local = _absolute_env_path(os.getenv("LOCALAPPDATA")) or (
             home / "AppData" / "Local"
         )
         return (
             local / _APP_NAME / "state" / "worker",
             local / _APP_NAME / "data" / "worker",
         )
-    state_base = _expanded_absolute(os.getenv("XDG_STATE_HOME")) or (
+    state_base = _absolute_env_path(os.getenv("XDG_STATE_HOME")) or (
         home / ".local" / "state"
     )
-    data_base = _expanded_absolute(os.getenv("XDG_DATA_HOME")) or (
+    data_base = _absolute_env_path(os.getenv("XDG_DATA_HOME")) or (
         home / ".local" / "share"
     )
     return state_base / _APP_NAME / "worker", data_base / _APP_NAME / "worker"
@@ -175,6 +175,19 @@ def worker_launcher_runner_path() -> Path:
 def worker_python_path() -> Path:
     """Return the stored Python executable used by the stable launcher."""
     return worker_data_dir() / "python"
+
+
+def worker_uv_path() -> Path:
+    """Return the persisted uv executable used for runtime installation/upgrades."""
+    name = "uv.exe" if os.name == "nt" else "uv"
+    return worker_data_dir() / name
+
+
+def runtime_python_path(runtime: Path) -> Path:
+    """Return the Python executable in one uv-managed worker runtime."""
+    if os.name == "nt":
+        return runtime / ".venv" / "Scripts" / "python.exe"
+    return runtime / ".venv" / "bin" / "python"
 
 
 def worker_install_lock_path() -> Path:

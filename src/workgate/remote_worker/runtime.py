@@ -27,12 +27,14 @@ from ..remote.constants import (
 from ..utils.private_files import private_file_lock
 from .state import (
     runtime_metadata_path,
+    runtime_python_path,
     worker_data_dir,
     worker_install_lock_path,
     worker_runtime_dir,
     worker_runtime_dir_for_digest,
     worker_runtimes_dir,
     worker_state_dir,
+    worker_uv_path,
 )
 
 __all__ = ("worker_data_dir", "worker_state_dir")
@@ -43,11 +45,12 @@ MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 128 * 1024 * 1024
 MAX_ARCHIVE_FILES = 4_096
 _REQUIRED_RUNTIME_FILES = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
     "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -81,8 +84,12 @@ def runtime_identity(digest: str | None = None) -> dict[str, str]:
     """Return one installed digest/version only for a complete runtime."""
     metadata = read_runtime_metadata(digest)
     runtime = worker_runtime_dir(digest)
-    if not metadata or not all(
-        (runtime / item).is_file() for item in _REQUIRED_RUNTIME_FILES
+    if (
+        not metadata
+        or not all(
+            (runtime / item).is_file() for item in _REQUIRED_RUNTIME_FILES
+        )
+        or not runtime_python_path(runtime).is_file()
     ):
         return {"sha256": "", "bundle_version": ""}
     return {
@@ -408,6 +415,36 @@ def safe_extract_bundle(archive: Path, destination: Path) -> None:
         raise ValueError(f"worker bundle is incomplete: missing {missing[0]}")
 
 
+def _sync_runtime_environment(runtime: Path) -> None:
+    """Install the locked worker dependency group into one runtime-local venv."""
+    uv = worker_uv_path()
+    if not uv.is_file():
+        raise RuntimeError(
+            "persisted uv is unavailable; re-enroll this worker with a fresh invite"
+        )
+    environment = os.environ.copy()
+    environment["UV_PROJECT_ENVIRONMENT"] = str(runtime / ".venv")
+    environment.pop("VIRTUAL_ENV", None)
+    result = subprocess.run(  # noqa: S603
+        [
+            str(uv),
+            "sync",
+            "--locked",
+            "--only-group",
+            "worker",
+            "--no-install-project",
+            "--no-config",
+            "--python",
+            sys.executable,
+        ],
+        cwd=runtime,
+        env=environment,
+        check=False,
+    )
+    if result.returncode or not runtime_python_path(runtime).is_file():
+        raise RuntimeError("worker dependency installation failed")
+
+
 def _write_runtime_metadata(
     data: dict[str, Any], digest: str | None = None
 ) -> None:
@@ -510,6 +547,7 @@ def install_runtime(
                 if runtime.exists():
                     os.replace(runtime, backup)
                 os.replace(extracted, runtime)
+                _sync_runtime_environment(runtime)
                 _write_runtime_metadata(
                     {
                         "schema_version": 1,
@@ -537,31 +575,20 @@ def install_runtime(
 
 
 def reexec_environment() -> dict[str, str]:
-    """Return an environment preferring the installed runtime exactly once."""
+    """Return an environment isolated to the selected managed runtime source."""
     runtime = worker_runtime_dir()
-    preferred = [str(runtime)]
-    inherited = [
-        entry
-        for entry in os.getenv("PYTHONPATH", "").split(os.pathsep)
-        if entry
-    ]
-    entries: list[str] = []
-    seen: set[str] = set()
-    for entry in [*preferred, *inherited]:
-        key = os.path.normcase(os.path.abspath(entry))
-        if key in seen:
-            continue
-        seen.add(key)
-        entries.append(entry)
     environment = os.environ.copy()
-    environment["PYTHONPATH"] = os.pathsep.join(entries)
+    environment["PYTHONPATH"] = str(runtime)
     return environment
 
 
 def worker_reexec_argv() -> list[str]:
     """Build a credential-free restart argv using only persisted identity."""
+    executable = runtime_python_path(worker_runtime_dir())
+    if not executable.is_file():
+        raise RuntimeError("selected worker runtime environment is unavailable")
     return [
-        sys.executable,
+        str(executable),
         "-m",
         "workgate.remote_worker",
         "run",

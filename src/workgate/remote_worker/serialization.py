@@ -1,4 +1,4 @@
-"""Dependency-light serialization for the source-only remote worker."""
+"""Dependency-light serialization for the trimmed remote worker runtime."""
 
 import dataclasses
 import enum

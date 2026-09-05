@@ -288,16 +288,29 @@ def _launcher_text(
         runtime_setup = f"""\
 runtime_digest = {selected!r}
 runtime_dir = data_dir / "runtimes" / runtime_digest
-if not runtime_dir.is_dir():
+runtime_python = runtime_dir / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
+if not runtime_dir.is_dir() or not runtime_python.is_file():
     raise SystemExit("managed worker runtime is unavailable")
-sys.path.insert(0, str(runtime_dir))
 os.environ[{WORKER_RUNTIME_DIGEST_ENV!r}] = runtime_digest
+"""
+        launch = f"""\
+environment = os.environ.copy()
+environment["PYTHONPATH"] = str(runtime_dir)
+os.execve(
+    str(runtime_python),
+    [str(runtime_python), "-m", "workgate.remote_worker", *{run_args}],
+    environment,
+)
 """
     else:
         runtime_setup = """\
 runtime_dir = data_dir / "runtime"
 if runtime_dir.is_dir():
     sys.path.insert(0, str(runtime_dir))
+"""
+        launch = f"""\
+from workgate.remote_worker.cli import run_worker_cli
+run_worker_cli({run_args})
 """
     return f"""\
 
@@ -313,8 +326,7 @@ os.environ[{WORKER_DATA_DIR_ENV!r}] = str(data_dir)
 {profile_setup}
 os.environ["WORKGATE_REMOTE_WORKER_RUNTIME"] = "1"
 os.environ["WORKGATE_WORKER_MANAGED"] = "1"
-from workgate.remote_worker.compat import main
-main({run_args})
+{launch.rstrip()}
 """
 
 

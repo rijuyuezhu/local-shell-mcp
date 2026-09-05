@@ -2,7 +2,7 @@
 
 This page records the stable architecture contracts of the project: process
 composition, dependency direction, runtime ownership, session authority,
-durability, remote trust, source-only worker constraints, and protocol/UI
+durability, remote trust, trimmed worker-runtime constraints, and protocol/UI
 boundaries. Architecture tests exact-freeze membership only where membership is
 itself a security, packaging, public-surface, or process contract. Ordinary
 internal files may move or split without being added to a central filename
@@ -33,7 +33,7 @@ workgate/
   config/                  settings and configuration surface
   agent_bridge/            external agent capability domain
   remote/                  controller-side remote-worker domain
-  remote_worker/           source-only worker runtime
+  remote_worker/           trimmed uv-managed worker runtime
   tool_session/            explicit local/remote workspace session state
   utils/                   small dependency-leaf technical primitives
 ```
@@ -105,7 +105,7 @@ Managed background Jobs are controller-owned rather than module-owned.
 `ControllerRuntime` constructs one `ManagedJobsRuntime`; its handler registry,
 asyncio tasks, and cross-process liveness leases are scoped to that owner. The
 `session_copy` managed handler is registered explicitly during controller
-composition, while source-only workers do not construct a managed Jobs owner
+composition, while remote worker executors do not construct a managed Jobs owner
 because their tracked jobs are shell-backed. Shutdown stops managed-job
 admission and cancels/awaits owned tasks before UI, OAuth, remote, terminal, or
 shared-store teardown, so cancellation can commit `stopped` (or durably journal
@@ -206,7 +206,7 @@ Rejected ownership alternatives:
 ## `ops`: shared transport-neutral operations
 
 The `ops` package is the shared application-operation layer. These modules back
-public tools, but they also serve source-only workers, Human UI adapters, generic
+public tools, but they also serve remote worker executors, Human UI adapters, generic
 HTTP routes, remote transfer services, the job runtime, or other operation
 families. Consequently, importing them from `tools` would reverse dependency
 direction: shared runtimes would depend on the public tool-registration layer.
@@ -235,8 +235,8 @@ Rejected ownership alternatives:
 ## `jobs`: shared durable background-job domain
 
 The `jobs` package owns durable tracked-job state and execution that must work
-independently of public tool registration. It is included in the source-only
-worker bundle and may depend on shell operations, session state, configuration,
+independently of public tool registration. The worker-required subset is included
+in the trimmed worker bundle and may depend on shell operations, session state, configuration,
 audit recording, private-file primitives, and shared job result contracts. It
 must not import `tools`, executors, UI adapters, or controller-only remote
 orchestration.
@@ -247,7 +247,7 @@ Rejected ownership alternatives:
   public controller-side job companion, preventing a truthful single owner for
   the `job` tool family.
 - `tools/ops/jobs.py`: only controller-side local/remote result orchestration
-  belongs there; moving the runtime would force source-only workers and process
+  belongs there; moving the runtime would force worker executors and process
   entrypoints to depend on the tool-registration layer.
 - `utils`: job state, lifecycle, and recovery form a cohesive domain rather than
   small dependency-leaf helpers.
@@ -268,7 +268,7 @@ Rejected ownership alternatives:
 - matching `tools/registry/*.py`: registration adapts operations to declarative
   tool metadata; combining implementation and schemas into registry adapters
   would erase the operation/contract boundary.
-- source-only worker bundle: workers execute shared job runtime actions but do
+- trimmed worker bundle: workers execute shared job runtime actions but do
   not import controller-side public-tool orchestration, so migrated `tools/` files
   must not be included incidentally by operation or schema wildcards.
 
@@ -319,7 +319,7 @@ Rejected ownership alternatives:
 
 The `ui` package owns Human UI view models, native-client runtime contracts, and
 UI-specific security behavior. UI core must not import protocol executors or
-HTTP route adapters. Controller and source-only worker adapters may invoke UI
+HTTP route adapters. Controller and remote-worker adapters may invoke UI
 core capabilities when serving a Human UI, but those capabilities remain
 internal rather than public tools.
 
@@ -330,7 +330,7 @@ Rejected ownership alternatives:
 - `telemetry`: audit activity labels, alerts, health presentation, and redaction
   choices are view-model policy rather than raw observations.
 - `server/http`: the same Dashboard projection is used locally and through a
-  source-only worker before any HTTP response is built. Image decoding likewise
+  remote worker before any HTTP response is built. Image decoding likewise
   belongs below the HTTP adapter because it is independent of query parameters
   and JSON response construction.
 - top-level `image_preview.py`: a package-root file hid that thumbnail generation
@@ -355,7 +355,7 @@ The `ui/static` directory owns the immutable HTML, CSS, JavaScript, third-party
 license, syntax-highlighting, and terminal-rendering assets served by
 `ui/http/routes.py`. Keeping the assets under the UI domain makes their product
 ownership explicit while preserving their package-data role; they contain no
-Python modules and are deliberately excluded from the source-only remote-worker
+Python modules and are deliberately excluded from the trimmed remote-worker
 runtime.
 
 The directory contains exactly the browser shell (`index.html`), Human UI styles
@@ -405,7 +405,7 @@ Rejected ownership alternatives:
 ## `terminal`: interactive terminal backends and lifecycle
 
 The `terminal` package owns terminal-emulation backends and the bounded lifecycle
-operations needed by local tools, source-only workers, and Human UI adapters. It
+operations needed by local tools, remote worker executors, and Human UI adapters. It
 may depend on configuration, audit, schemas, and low-level operation helpers, but
 it must not depend on protocol executors, HTTP route adapters, or UI presentation.
 
@@ -419,7 +419,7 @@ Rejected ownership alternatives:
 - `ops/shell.py`: shell operations select and orchestrate terminal backends; they
   should not own backend implementations or shared terminal-dimension contracts.
 - `ui/http`: Human UI adapters consume raw bridges, but the same lifecycle is
-  also used by local tools and source-only remote workers before HTTP delivery.
+  also used by local tools and remote workers before HTTP delivery.
 
 ## `audit`: redacted event persistence and query
 
@@ -473,8 +473,10 @@ Rejected ownership alternatives:
 
 ## `remote_worker/state.py`: worker process path contract
 
-The source-only worker keeps persistent installation paths separate from bundle
-installation and process-lock policy. Dependency direction is intentionally
+The worker keeps persistent installation paths separate from bundle installation
+and process-lock policy. Each content-addressed runtime owns a locked uv environment,
+while `state.py` remains a stdlib-only dependency leaf so bootstrap-visible path
+derivation does not depend on an already-installed project environment. Dependency direction is intentionally
 one-way: `remote_worker/lifecycle.py` and `remote_worker/runtime.py` consume the
 state contract; runtime may request lifecycle lock handoff during re-exec, but
 lifecycle must not import runtime.
@@ -513,7 +515,7 @@ Accepted decompositions preserve stable facades rather than moving code by size 
 
 - `jobs/runtime.py` is now a compatibility/orchestration facade over dedicated
   lifecycle, shell, managed, persistence, recovery, state, and runner modules while
-  preserving the durable job format and source-only worker contract.
+  preserving the durable job format and trimmed worker-runtime contract.
 - Human UI terminal delivery is split into `terminal_protocol.py`,
   `terminal_websocket.py`, and the stable `terminals.py` facade. The split was only
   accepted together with typed protocol-contract tests and local/remote adapter-parity

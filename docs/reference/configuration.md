@@ -10,7 +10,7 @@ Settings resolve in this order:
 defaults < config file < WORKGATE_* environment variables < CLI arguments
 ```
 
-The config file is selected as `--config PATH`, then `WORKGATE_CONFIG`, then the platform default config file when it exists. On Linux the default is `${XDG_CONFIG_HOME:-~/.config}/workgate/config.yaml`. A missing default config file is normal and is not created implicitly.
+The config file is selected as `--config PATH`, then `WORKGATE_CONFIG`, then the platform default config file when it exists. On Linux the default is `${XDG_CONFIG_HOME:-~/.config}/workgate/config.yaml`. A missing default config file is normal and is not created implicitly. Managed remote-worker executors deliberately skip this ambient default-file discovery so an edge worker does not accidentally inherit controller policy from its host; an explicit `WORKGATE_CONFIG` remains supported as an operator opt-in.
 
 YAML config files use flat setting names such as `auth_mode` and `workspace_root`. Nested groups are not read by the application settings loader. Filesystem paths stored in YAML are persistent configuration: after `~` and environment-variable expansion they must be absolute. Relative YAML paths such as `./project` or `../state` are rejected. Relative path overrides from environment variables and CLI arguments remain invocation-oriented and resolve against the directory Workgate was started from.
 

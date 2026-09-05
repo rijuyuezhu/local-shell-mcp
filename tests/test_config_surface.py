@@ -175,6 +175,48 @@ def test_default_config_is_discovered_from_platform_config_dir(
     assert settings.port == 8123
 
 
+def test_worker_runtime_does_not_discover_ambient_default_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_dir = settings_module.app_paths().config_dir
+    config_dir.mkdir(parents=True)
+    ambient_workspace = tmp_path / "ambient-workspace"
+    (config_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {"workspace_root": str(ambient_workspace), "port": 8123}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setenv("WORKGATE_REMOTE_WORKER_RUNTIME", "1")
+
+    settings = load_settings()
+
+    assert settings.workspace_root == tmp_path.resolve()
+    assert settings.port != 8123
+
+
+def test_worker_runtime_honors_explicit_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "worker.yaml"
+    workspace = tmp_path / "configured-workspace"
+    config.write_text(
+        yaml.safe_dump({"workspace_root": str(workspace), "port": 8123}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WORKGATE_REMOTE_WORKER_RUNTIME", "1")
+    monkeypatch.setenv("WORKGATE_CONFIG", str(config))
+    monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
+
+    settings = load_settings()
+
+    assert settings.workspace_root == workspace
+    assert settings.port == 8123
+
+
 def test_yaml_paths_must_be_absolute_after_expansion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

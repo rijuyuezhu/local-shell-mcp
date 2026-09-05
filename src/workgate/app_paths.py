@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
+import secrets
+import stat
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -11,24 +12,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _APP_NAME = "workgate"
+_RUNTIME_FALLBACK_NONCE = secrets.token_hex(8)
 
 
-def _expanded_absolute(value: str | None) -> Path | None:
-    """Expand one path-like environment value only when it is absolute."""
+def _absolute_env_path(value: str | None) -> Path | None:
+    """Accept one environment-provided application base only when already absolute."""
     if not value:
         return None
-    expanded = Path(os.path.expandvars(os.path.expanduser(value)))
-    if not expanded.is_absolute():
+    path = Path(value)
+    if not path.is_absolute():
         return None
-    return expanded
+    return path
 
 
-def _uid_suffix() -> str:
+def _uid_suffix(env: Mapping[str, str] | None = None) -> str:
     """Return a stable per-user suffix for shared temporary roots."""
     getuid = getattr(os, "getuid", None)
     if getuid is not None:
         return str(getuid())
-    username = os.getenv("USERNAME") or os.getenv("USER")
+    active_env = os.environ if env is None else env
+    username = active_env.get("USERNAME") or active_env.get("USER")
     return username or "user"
 
 
@@ -75,19 +78,33 @@ class AppPaths:
 
 def _xdg_base(env: Mapping[str, str], name: str, fallback: Path) -> Path:
     """Return an absolute XDG base or the documented fallback."""
-    return _expanded_absolute(env.get(name)) or fallback
+    return _absolute_env_path(env.get(name)) or fallback
+
+
+def _is_private_runtime_base(path: Path) -> bool:
+    """Return whether a POSIX XDG runtime directory satisfies its security contract."""
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        return False
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is not None and info.st_uid != geteuid():
+        return False
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        return False
+    return os.access(path, os.W_OK | os.X_OK)
 
 
 def _runtime_base(env: Mapping[str, str], temp_root: Path) -> Path:
     """Return a usable runtime base or a private-temp fallback location."""
-    configured = _expanded_absolute(env.get("XDG_RUNTIME_DIR"))
-    if (
-        configured is not None
-        and configured.is_dir()
-        and os.access(configured, os.W_OK | os.X_OK)
-    ):
+    configured = _absolute_env_path(env.get("XDG_RUNTIME_DIR"))
+    if configured is not None and _is_private_runtime_base(configured):
         return configured / _APP_NAME
-    return temp_root / f"{_APP_NAME}-{_uid_suffix()}"
+    return temp_root / (
+        f"{_APP_NAME}-{_uid_suffix(env)}-{_RUNTIME_FALLBACK_NONCE}"
+    )
 
 
 def resolve_app_paths(
@@ -112,14 +129,15 @@ def resolve_app_paths(
             state_dir=support / "state",
             data_dir=support / "data",
             cache_dir=user_home / "Library" / "Caches" / _APP_NAME,
-            runtime_dir=temporary / f"{_APP_NAME}-{_uid_suffix()}",
+            runtime_dir=temporary
+            / f"{_APP_NAME}-{_uid_suffix(active_env)}-{_RUNTIME_FALLBACK_NONCE}",
         )
 
     if active_platform.startswith("win"):
-        roaming = _expanded_absolute(active_env.get("APPDATA")) or (
+        roaming = _absolute_env_path(active_env.get("APPDATA")) or (
             user_home / "AppData" / "Roaming"
         )
-        local = _expanded_absolute(active_env.get("LOCALAPPDATA")) or (
+        local = _absolute_env_path(active_env.get("LOCALAPPDATA")) or (
             user_home / "AppData" / "Local"
         )
         return AppPaths(
@@ -127,7 +145,9 @@ def resolve_app_paths(
             state_dir=local / _APP_NAME / "state",
             data_dir=local / _APP_NAME / "data",
             cache_dir=local / _APP_NAME / "cache",
-            runtime_dir=temporary / _APP_NAME / "runtime",
+            runtime_dir=temporary
+            / _APP_NAME
+            / f"runtime-{_RUNTIME_FALLBACK_NONCE}",
         )
 
     config_base = _xdg_base(
@@ -155,9 +175,26 @@ def app_paths() -> AppPaths:
 
 
 def ensure_private_directory(path: Path) -> Path:
-    """Create a Workgate-owned private directory and tighten POSIX mode."""
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    """Create or validate a Workgate-owned private directory without following a leaf symlink."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        path.mkdir(parents=True, exist_ok=False, mode=0o700)
+        info = path.lstat()
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise OSError(
+            f"private application directory is not a directory: {path}"
+        )
     if os.name != "nt":
-        with contextlib.suppress(OSError):
-            path.chmod(0o700)
+        geteuid = getattr(os, "geteuid", None)
+        if geteuid is not None and info.st_uid != geteuid():
+            raise PermissionError(
+                f"private application directory is not owned by the current user: {path}"
+            )
+        path.chmod(0o700)
+        verified = path.lstat()
+        if stat.S_IMODE(verified.st_mode) != 0o700:
+            raise PermissionError(
+                f"private application directory is not owner-only: {path}"
+            )
     return path

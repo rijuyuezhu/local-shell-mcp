@@ -157,7 +157,7 @@ def test_systemd_install_is_private_idempotent_and_credential_free(
         assert secret not in text
         assert secret not in launcher_text
     assert "worker-launcher.py" in text
-    assert 'main(["run"])' in launcher_text
+    assert 'run_worker_cli(["run"])' in launcher_text
     assert service._systemd_quote(identity["workdir"]) in text
     if os.name != "nt":
         assert unit.stat().st_mode & 0o777 == 0o600
@@ -190,7 +190,7 @@ def test_systemd_service_binds_one_profile_and_runtime(
     assert (
         "os.environ['WORKGATE_WORKER_PROFILE_ID'] = 'p_abcdefgh'"
     ) in launcher
-    assert 'main(["run", "p_abcdefgh"])' in launcher
+    assert '"-m", "workgate.remote_worker", *["run", "p_abcdefgh"]' in launcher
     assert identity["access"] not in launcher
     assert identity["server"] not in launcher
 
@@ -445,7 +445,7 @@ def test_prepare_launchd_environment_preserves_profile_launcher(
         service.launchd_plist_path()
     )
     assert launcher.read_text(encoding="utf-8") == original
-    assert 'main(["run", "p_abcdefgh"])' in original
+    assert '"-m", "workgate.remote_worker", *["run", "p_abcdefgh"]' in original
 
 
 def test_prepare_launchd_environment_rejects_symlinked_plist(
@@ -976,6 +976,7 @@ def test_worker_connect_and_run_handlers_mark_runtime(
     run_args.handler(run_args)
     assert prepared == [True]
     assert run_calls == [True]
+    os.environ.pop("WORKGATE_REMOTE_WORKER_RUNTIME", None)
 
 
 def test_worker_invite_error_and_async_failure_are_clean(
@@ -1215,7 +1216,10 @@ def test_systemd_profile_rebind_updates_unit_workdir_and_reloads(
     )
     launcher = service.launcher_path().read_text(encoding="utf-8")
     assert f"runtime_digest = {second_digest!r}" in launcher
-    assert f'main(["run", "{second_profile}"])' in launcher
+    assert (
+        f'"-m", "workgate.remote_worker", *["run", "{second_profile}"]'
+        in launcher
+    )
     assert ["/usr/bin/systemctl", "--user", "daemon-reload"] in fake.commands
 
     fake.commands.clear()

@@ -1,6 +1,6 @@
 """Executable remote-worker entrypoint."""
 
-from .compat import main
+from .cli import run_worker_cli
 
 if __name__ == "__main__":
-    main()
+    run_worker_cli()

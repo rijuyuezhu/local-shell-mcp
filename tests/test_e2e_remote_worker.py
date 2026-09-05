@@ -3,11 +3,10 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
-import sysconfig
 import tarfile
-import venv
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -136,7 +135,10 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "WORKGATE_WORKSPACE_ROOT": str(remote_workspace),
             "WORKGATE_STATE_DIR": str(remote_workspace / ".workgate"),
             "WORKGATE_WORKER_STATE_DIR": str(
-                remote_workspace / ".workgate-worker"
+                remote_workspace / ".workgate-worker-state"
+            ),
+            "WORKGATE_WORKER_DATA_DIR": str(
+                remote_workspace / ".workgate-worker-data"
             ),
             "WORKGATE_AUTH_MODE": "none",
             "WORKGATE_AGENT_BRIDGE_ENABLED": "true",
@@ -156,9 +158,9 @@ def start_worker_process(
     remote_workspace: Path,
     bundle_path: Path,
 ) -> subprocess.Popen[Any]:
-    state_dir = remote_workspace / ".workgate-worker"
+    data_dir = remote_workspace / ".workgate-worker-data"
     digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
-    runtime_dir = state_dir / "runtimes" / digest
+    runtime_dir = data_dir / "runtimes" / digest
     runtime_dir.mkdir(parents=True)
     with tarfile.open(bundle_path) as bundle:
         bundle.extractall(runtime_dir, filter="data")
@@ -174,46 +176,42 @@ def start_worker_process(
         ),
         encoding="utf-8",
     )
-    dependency_paths = sorted(
-        {sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]}
-    )
+    uv = shutil.which("uv")
+    assert uv is not None
+    data_dir.mkdir(parents=True, exist_ok=True)
+    persisted_uv = data_dir / ("uv.exe" if os.name == "nt" else "uv")
+    shutil.copy2(uv, persisted_uv)
+    if os.name != "nt":
+        persisted_uv.chmod(0o700)
 
-    isolated_venv = state_dir / "e2e-venv"
-    venv.EnvBuilder(with_pip=False, clear=True).create(isolated_venv)
-    worker_python = (
-        isolated_venv / "Scripts" / "python.exe"
-        if os.name == "nt"
-        else isolated_venv / "bin" / "python"
-    )
-    isolated_site_probe = subprocess.run(
+    sync_env = worker_env(remote_workspace)
+    sync_env["UV_PROJECT_ENVIRONMENT"] = str(runtime_dir / ".venv")
+    sync_env.pop("VIRTUAL_ENV", None)
+    synced = subprocess.run(
         [
-            str(worker_python),
-            "-c",
-            "import sysconfig; print(sysconfig.get_path('purelib'))",
+            str(persisted_uv),
+            "sync",
+            "--locked",
+            "--only-group",
+            "worker",
+            "--no-install-project",
+            "--no-config",
+            "--python",
+            sys.executable,
         ],
-        cwd=remote_workspace,
-        env=worker_env(remote_workspace),
+        cwd=runtime_dir,
+        env=sync_env,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert isolated_site_probe.returncode == 0, isolated_site_probe.stderr
-    isolated_site = Path(isolated_site_probe.stdout.strip())
-    (isolated_site / "workgate-e2e-deps.pth").write_text(
-        "\n".join(
-            [
-                *dependency_paths,
-                (
-                    "import os; (os.getenv('COVERAGE_PROCESS_START') or "
-                    "os.getenv('COVERAGE_PROCESS_CONFIG')) and "
-                    "__import__('coverage').process_startup(slug='pth')"
-                ),
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    assert synced.returncode == 0, synced.stderr
 
+    worker_python = (
+        runtime_dir / ".venv" / "Scripts" / "python.exe"
+        if os.name == "nt"
+        else runtime_dir / ".venv" / "bin" / "python"
+    )
     isolation_probe = subprocess.run(
         [
             str(worker_python),
@@ -221,7 +219,8 @@ def start_worker_process(
             (
                 "import importlib.util; "
                 "print(importlib.util.find_spec('workgate')); "
-                "print(bool(importlib.util.find_spec('coverage')))"
+                "print(bool(importlib.util.find_spec('pydantic'))); "
+                "print(bool(importlib.util.find_spec('yaml')))"
             ),
         ],
         cwd=remote_workspace,
@@ -231,7 +230,7 @@ def start_worker_process(
         check=False,
     )
     assert isolation_probe.returncode == 0, isolation_probe.stderr
-    assert isolation_probe.stdout.splitlines() == ["None", "True"]
+    assert isolation_probe.stdout.splitlines() == ["None", "True", "True"]
 
     env = worker_env(remote_workspace)
     env["PYTHONPATH"] = str(runtime_dir)
@@ -253,7 +252,7 @@ def start_worker_process(
             "--profile",
             "p_e2e00000",
         ],
-        cwd=PROJECT_ROOT,
+        cwd=runtime_dir,
         env=env,
         stdout_path=remote_workspace / "worker.stdout.log",
         stderr_path=remote_workspace / "worker.stderr.log",
@@ -347,10 +346,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             'export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
             in join_script
         )
-        assert (
-            'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"'
-            in join_script
-        )
+        assert 'export PYTHONPATH="$RUNTIME_DIR"' in join_script
         assert "python_supports_worker" in join_script
         assert "python install 3.14" in join_script
         assert "Downloading worker manifest" in join_script
@@ -374,9 +370,11 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         bundle_path.write_bytes(bundle_response.content)
         with tarfile.open(bundle_path) as bundle:
             names = bundle.getnames()
+            assert "pyproject.toml" in names
+            assert "uv.lock" in names
             assert "workgate/remote_worker/__main__.py" in names
             assert "workgate/remote_worker/worker.py" in names
-            assert "workgate/remote_worker/compat.py" in names
+            assert "workgate/remote_worker/compat.py" not in names
             assert "workgate/remote_worker/profiles.py" in names
             assert "workgate/remote_worker/runtime.py" in names
             assert "workgate/remote_worker/cli.py" in names
@@ -389,7 +387,10 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 name.startswith("workgate/ui/static/") or "ui_static" in name
                 for name in names
             )
-            assert all(name.endswith(".py") for name in names)
+            assert all(
+                name in {"pyproject.toml", "uv.lock"} or name.endswith(".py")
+                for name in names
+            )
 
         worker = start_worker_process(
             base_url,

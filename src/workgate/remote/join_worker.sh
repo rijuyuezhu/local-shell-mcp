@@ -12,11 +12,13 @@ SYSTEM_TMPDIR="${TMPDIR:-/tmp}"
 TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
+UV_STORED=""
 STATE_DIR=""
 DATA_DIR=""
 RUNTIME_DIGEST=""
 RUNTIME_VERSION=""
 RUNTIME_DIR=""
+RUNTIME_PYTHON=""
 RUNTIME_METADATA=""
 LAUNCHER=""
 PROFILE_DIR=""
@@ -102,21 +104,55 @@ configure_app_dirs() {
   fi
 }
 
+private_dir_is_suitable() {
+  local mode
+  [ -n "${1:-}" ] && [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] && [ -w "$1" ] && [ -x "$1" ] || return 1
+  if mode="$(stat -c '%a' "$1" 2>/dev/null)"; then
+    [ "$mode" = "700" ]
+    return
+  fi
+  if mode="$(stat -f '%Lp' "$1" 2>/dev/null)"; then
+    [ "$mode" = "700" ]
+    return
+  fi
+  return 1
+}
+
+prepare_private_persistent_dir() {
+  local path="$1" label="$2" platform
+  platform="$(uname -s 2>/dev/null || true)"
+  [ ! -L "$path" ] || die "$label directory is unsafe"
+  mkdir -p "$path" || die "cannot create $label directory"
+  if is_windows_shell "$platform"; then
+    (cd "$path" && pwd -P) || die "cannot resolve $label directory"
+    return
+  fi
+  [ -d "$path" ] && [ ! -L "$path" ] && [ -O "$path" ] || die "$label directory is unsafe"
+  chmod 700 "$path" || die "cannot make $label directory private"
+  private_dir_is_suitable "$path" || die "$label directory is unsafe"
+  (cd "$path" && pwd -P) || die "cannot resolve $label directory"
+}
+
 create_bootstrap_tmpdir() {
   local platform runtime_base xdg_runtime
   platform="$(uname -s 2>/dev/null || true)"
   if is_windows_shell "$platform"; then
-    runtime_base="$SYSTEM_TMPDIR/workgate/runtime"
+    TMPDIR="$(mktemp -d "$SYSTEM_TMPDIR/workgate-worker-bootstrap.XXXXXX")"
+    chmod 700 "$TMPDIR" 2>/dev/null || true
+    return
   else
     xdg_runtime="$(absolute_env_or_empty "${XDG_RUNTIME_DIR:-}")"
-    if [ -n "$xdg_runtime" ] && [ -d "$xdg_runtime" ] && [ -w "$xdg_runtime" ] && [ -x "$xdg_runtime" ]; then
+    if private_dir_is_suitable "$xdg_runtime"; then
       runtime_base="$xdg_runtime/workgate"
     else
-      runtime_base="$SYSTEM_TMPDIR/workgate-$(id -u 2>/dev/null || printf 'user')"
+      TMPDIR="$(mktemp -d "$SYSTEM_TMPDIR/workgate-worker-bootstrap.XXXXXX")"
+      chmod 700 "$TMPDIR" || die "cannot make worker bootstrap temp directory private"
+      return
     fi
   fi
   mkdir -p "$runtime_base"
-  chmod 700 "$runtime_base" 2>/dev/null || true
+  [ -d "$runtime_base" ] && [ ! -L "$runtime_base" ] && [ -O "$runtime_base" ] || die "worker runtime directory is unsafe"
+  chmod 700 "$runtime_base" || die "cannot make worker runtime directory private"
   TMPDIR="$(mktemp -d "$runtime_base/worker-bootstrap.XXXXXX")"
 }
 
@@ -153,17 +189,6 @@ raise SystemExit(0 if sys.version_info >= (3, 14) else 1)
 PY
 }
 
-find_existing_python() {
-  local candidate
-  for candidate in python3.14 python3; do
-    if have "$candidate" && python_supports_worker "$candidate"; then
-      PYTHON_BIN="$(command -v "$candidate")"
-      return 0
-    fi
-  done
-  return 1
-}
-
 download_temporary_uv() {
   mkdir -p "$TMPDIR/uv-bin"
   echo "uv not found; downloading a temporary uv for worker bootstrap..." >&2
@@ -186,21 +211,32 @@ ensure_uv() {
 }
 
 find_or_install_python() {
-  if find_existing_python; then
-    return 0
-  fi
-
-  if ensure_uv; then
-    if ! PYTHON_BIN="$($UV_BIN python find 3.14 2>/dev/null)"; then
-      echo "Python 3.14 not found; installing with uv..." >&2
-      "$UV_BIN" python install 3.14 >/dev/null
-      PYTHON_BIN="$($UV_BIN python find 3.14)"
-    fi
+  if ! PYTHON_BIN="$($UV_BIN python find 3.14 2>/dev/null)"; then
+    echo "Python 3.14 not found; installing with uv..." >&2
+    "$UV_BIN" python install 3.14 >/dev/null
+    PYTHON_BIN="$($UV_BIN python find 3.14)"
   fi
 
   if [ -z "$PYTHON_BIN" ] || ! python_supports_worker "$PYTHON_BIN"; then
-    die "python >= 3.14 is required; install python3.14 or uv and retry"
+    die "uv could not provide a usable python >= 3.14"
   fi
+}
+
+persist_uv() {
+  local platform target temporary
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    target="$DATA_DIR/uv.exe"
+  else
+    target="$DATA_DIR/uv"
+  fi
+  temporary="$target.installing.$$"
+  if [ "$UV_BIN" != "$target" ]; then
+    cp "$UV_BIN" "$temporary"
+    chmod 700 "$temporary" 2>/dev/null || true
+    mv -f "$temporary" "$target"
+  fi
+  UV_STORED="$target"
 }
 
 resolve_workdir() {
@@ -239,12 +275,13 @@ import sys
 if not re.fullmatch(r"p_[A-Za-z0-9_-]{8,64}", sys.argv[1]):
     raise SystemExit("invalid remote worker profile id")
 PY
-  PROFILE_DIR="$STATE_DIR/profiles/$PROFILE_ID"
+  local profile_root
+  profile_root="$(prepare_private_persistent_dir "$STATE_DIR/profiles" "worker profiles")"
+  PROFILE_DIR="$profile_root/$PROFILE_ID"
   if [ -f "$PROFILE_DIR/identity.json" ]; then
     die "worker profile already exists; reconnect with $LAUNCHER $PROFILE_ID"
   fi
-  mkdir -p "$PROFILE_DIR"
-  chmod 700 "$PROFILE_DIR" 2>/dev/null || true
+  PROFILE_DIR="$(prepare_private_persistent_dir "$PROFILE_DIR" "worker profile")"
 }
 
 install_launcher() {
@@ -253,8 +290,8 @@ install_launcher() {
     cd "$RUNTIME_DIR"
     WORKGATE_WORKER_STATE_DIR="$STATE_DIR" \
     WORKGATE_WORKER_DATA_DIR="$DATA_DIR" \
-    PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-    "$PYTHON_BIN" - "$PYTHON_BIN" <<'PY'
+    PYTHONPATH="$RUNTIME_DIR" \
+    "$RUNTIME_PYTHON" - "$PYTHON_BIN" <<'PY'
 import sys
 
 from workgate.remote_worker.profile_launcher import ensure_profile_launcher
@@ -325,10 +362,17 @@ PY
 }
 
 configure_runtime() {
+  local platform
   RUNTIME_DIGEST="$(cat "$TMPDIR/bundle-sha256")"
   RUNTIME_VERSION="$(cat "$TMPDIR/bundle-version")"
   RUNTIME_DIR="$DATA_DIR/runtimes/$RUNTIME_DIGEST"
   RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    RUNTIME_PYTHON="$RUNTIME_DIR/.venv/Scripts/python.exe"
+  else
+    RUNTIME_PYTHON="$RUNTIME_DIR/.venv/bin/python"
+  fi
 }
 
 runtime_is_installed() {
@@ -349,11 +393,12 @@ try:
 except (OSError, ValueError, json.JSONDecodeError):
     raise SystemExit(1)
 required = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
     "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -361,12 +406,16 @@ required = (
     "workgate/remote_worker/state.py",
     "workgate/remote_worker/worker.py",
 )
+runtime_python = runtime / (
+    ".venv/Scripts/python.exe" if sys.platform == "win32" else ".venv/bin/python"
+)
 valid = (
     isinstance(metadata, dict)
     and metadata.get("schema_version") == 1
     and metadata.get("bundle_version") == version
     and metadata.get("sha256") == digest
     and all((runtime / relative).is_file() for relative in required)
+    and runtime_python.is_file()
 )
 raise SystemExit(0 if valid else 1)
 PY
@@ -441,7 +490,9 @@ install_bundle() {
     "$RUNTIME_METADATA" \
     "$(cat "$TMPDIR/bundle-version")" \
     "$(cat "$TMPDIR/bundle-sha256")" \
-    "$(cat "$TMPDIR/bundle-size")" <<'PY'
+    "$(cat "$TMPDIR/bundle-size")" \
+    "$UV_STORED" \
+    "$PYTHON_BIN" <<'PY'
 import contextlib
 import hashlib
 import json
@@ -466,6 +517,8 @@ from typing import BinaryIO
     version,
     expected_digest,
     expected_size,
+    uv_path,
+    python_path,
 ) = sys.argv[1:]
 archive = Path(archive_path)
 bundle_url = Path(bundle_url_path).read_text(encoding="utf-8")
@@ -477,11 +530,12 @@ state_dir = runtime.parent
 staging = state_dir / f"{expected_digest}.install.{uuid.uuid4().hex}"
 backup = state_dir / f"{expected_digest}.previous.{uuid.uuid4().hex}"
 required = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
     "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -527,12 +581,18 @@ def runtime_is_complete() -> bool:
         decoded = json.loads(metadata.read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError):
         return False
+    runtime_python = runtime / (
+        ".venv/Scripts/python.exe"
+        if os.name == "nt"
+        else ".venv/bin/python"
+    )
     return (
         isinstance(decoded, dict)
         and decoded.get("schema_version") == 1
         and decoded.get("bundle_version") == version
         and decoded.get("sha256") == expected_digest
         and all((runtime / relative).is_file() for relative in required)
+        and runtime_python.is_file()
     )
 
 
@@ -634,6 +694,32 @@ with lock_file.open("a+b") as lock_handle, install_lock(lock_handle):
             if runtime.exists():
                 os.replace(runtime, backup)
             os.replace(staging, runtime)
+            runtime_python = runtime / (
+                ".venv/Scripts/python.exe"
+                if os.name == "nt"
+                else ".venv/bin/python"
+            )
+            sync_env = os.environ.copy()
+            sync_env["UV_PROJECT_ENVIRONMENT"] = str(runtime / ".venv")
+            sync_env.pop("VIRTUAL_ENV", None)
+            completed = subprocess.run(
+                [
+                    uv_path,
+                    "sync",
+                    "--locked",
+                    "--only-group",
+                    "worker",
+                    "--no-install-project",
+                    "--no-config",
+                    "--python",
+                    python_path,
+                ],
+                cwd=runtime,
+                env=sync_env,
+                check=False,
+            )
+            if completed.returncode or not runtime_python.is_file():
+                raise RuntimeError("worker dependency installation failed")
             temporary_metadata = metadata.with_name(
                 f"{metadata.name}.{uuid.uuid4().hex}.tmp"
             )
@@ -675,19 +761,19 @@ worker_args() {
 }
 
 start_worker() {
-  echo "Starting worker with $PYTHON_BIN..." >&2
+  echo "Starting worker with $RUNTIME_PYTHON..." >&2
   printf 'Worker profile: %s\nReconnect with:\n  %q %q\n' "$PROFILE_ID" "$LAUNCHER" "$PROFILE_ID" >&2
   export WORKGATE_WORKER_STATE_DIR="$STATE_DIR"
   export WORKGATE_WORKER_DATA_DIR="$DATA_DIR"
   export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
-  export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH="$RUNTIME_DIR"
   worker_args
   cd "$RUNTIME_DIR"
   if [ "$BACKGROUND" = "1" ]; then
-    nohup "$PYTHON_BIN" -m workgate.remote_worker "${ARGS[@]}" > "$PROFILE_DIR/worker.log" 2>&1 &
+    nohup "$RUNTIME_PYTHON" -m workgate.remote_worker "${ARGS[@]}" > "$PROFILE_DIR/worker.log" 2>&1 &
     echo "workgate worker started in background. Log: $PROFILE_DIR/worker.log"
   else
-    exec "$PYTHON_BIN" -m workgate.remote_worker "${ARGS[@]}"
+    exec "$RUNTIME_PYTHON" -m workgate.remote_worker "${ARGS[@]}"
   fi
 }
 
@@ -695,15 +781,13 @@ main() {
   parse_args "$@"
   require_basic_tools
   configure_app_dirs
-  mkdir -p "$STATE_DIR"
-  STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"
-  chmod 700 "$STATE_DIR" 2>/dev/null || true
-  mkdir -p "$DATA_DIR"
-  DATA_DIR="$(cd "$DATA_DIR" && pwd -P)"
-  chmod 700 "$DATA_DIR" 2>/dev/null || true
+  STATE_DIR="$(prepare_private_persistent_dir "$STATE_DIR" "worker state")"
+  DATA_DIR="$(prepare_private_persistent_dir "$DATA_DIR" "worker data")"
   create_bootstrap_tmpdir
   trap cleanup EXIT
+  ensure_uv || die "uv is required for the worker runtime"
   find_or_install_python
+  persist_uv
   resolve_workdir
   select_launcher_path
   prepare_profile

@@ -55,6 +55,23 @@ async def test_worker_dispatcher_override_binds_search_dependency() -> None:
     assert result == {"dependency": dependency, "query": "needle"}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"target": "remote", "machine": "edge"},
+        {"target": "local", "machine": "edge"},
+    ],
+)
+async def test_worker_dispatcher_rejects_nested_remote_session_start(
+    payload: dict[str, str],
+) -> None:
+    dispatcher = build_worker_dispatcher()
+
+    with pytest.raises(ValueError, match="only local worker sessions"):
+        await dispatcher.execute("session_start", payload)
+
+
 def test_worker_dispatcher_rejects_unknown_override() -> None:
     async def handler(_args):
         return None

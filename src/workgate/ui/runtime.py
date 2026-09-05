@@ -53,6 +53,29 @@ def _copy_bounded_gzip(source: Path, destination: Path) -> None:
         raise ValueError("Embedded OpenTUI runtime is empty")
 
 
+def _same_regular_file_content(left: Path, right: Path) -> bool:
+    """Compare two regular non-symlink files without trusting cache metadata."""
+    try:
+        left_info = left.lstat()
+        right_info = right.lstat()
+    except OSError:
+        return False
+    if (
+        not stat.S_ISREG(left_info.st_mode)
+        or not stat.S_ISREG(right_info.st_mode)
+        or left_info.st_size != right_info.st_size
+    ):
+        return False
+    with left.open("rb") as left_file, right.open("rb") as right_file:
+        while True:
+            left_chunk = left_file.read(1024 * 1024)
+            right_chunk = right_file.read(1024 * 1024)
+            if left_chunk != right_chunk:
+                return False
+            if not left_chunk:
+                return True
+
+
 def materialize_embedded_tui(
     cache_dir: Path,
     *,
@@ -63,10 +86,10 @@ def materialize_embedded_tui(
     if payload is None or not payload.is_file():
         return None
 
+    ensure_private_directory(cache_dir.parent)
+    cache_dir = ensure_private_directory(cache_dir)
     target_dir = ensure_private_directory(cache_dir / __version__)
     target = target_dir / payload.name.removesuffix(".gz")
-    if target.is_file():
-        return target
 
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{target.name}.", suffix=".tmp", dir=target_dir
@@ -80,7 +103,7 @@ def materialize_embedded_tui(
         try:
             os.replace(temporary, target)
         except PermissionError:
-            if not target.is_file():
+            if not _same_regular_file_content(temporary, target):
                 raise
         return target
     finally:

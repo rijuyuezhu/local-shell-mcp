@@ -6,7 +6,7 @@ Remote workers let one `workgate` control server run session-bound work on anoth
 
 The control server needs a public `WORKGATE_BASE_URL` reachable from the remote machine and remote support enabled. Normal MCP and UI access should remain protected by OAuth.
 
-The remote machine needs `curl` and a usable Python 3.14 environment or `uv`. The selected workdir must be accessible to the user running the worker. Tools such as Git, compilers, CUDA, and package managers come from that remote machine.
+The remote machine needs `curl`; the generated enrollment command bootstraps `uv` when necessary and uses it to obtain Python 3.14. Each content-addressed managed worker runtime owns its own `.venv`, populated from the `worker` dependency group in the bundled `pyproject.toml` and the bundled project `uv.lock`. Workgate does not maintain a separate worker requirements file. The selected workdir must be accessible to the user running the worker. Tools such as Git, compilers, CUDA, and package managers come from that remote machine.
 
 ## Enroll a worker
 
@@ -34,6 +34,8 @@ ${XDG_DATA_HOME:-~/.local/share}/workgate/worker/   # runtimes, launcher, stored
 ```
 
 macOS and Windows use native per-user Workgate state/data locations. Clearing ordinary cache or runtime/temp storage does not remove an installed managed worker runtime.
+
+Managed worker execution is intentionally isolated from controller configuration on the remote host. A worker does not auto-discover that machine's default Workgate `config.yaml`; the enrolled workdir and worker-specific environment are authoritative. `WORKGATE_CONFIG=/absolute/path` remains an explicit opt-in when an operator intentionally wants to apply a config file to the worker process.
 
 If enrollment used a custom `WORKGATE_WORKER_STATE_DIR`, export the same value whenever you run the `workgate worker ...` lifecycle and update commands below. For compatibility with older layouts, an explicit `WORKGATE_WORKER_STATE_DIR` also owns worker runtime/data files unless `WORKGATE_WORKER_DATA_DIR` is set separately. The saved reconnect launcher and an installed native service preserve the selected roots internally, but a fresh administrative CLI process otherwise uses the platform defaults.
 
@@ -110,6 +112,8 @@ workgate worker update p_0123456789abcdef
 ```
 
 Use `--force` only when you intentionally want to reinstall the current runtime.
+
+Managed runtime protocol 2 introduces the per-runtime locked uv environment. Workers from the earlier source-only/runtime-protocol-1 design are intentionally not upgraded in place: a current controller rejects them before issuing a bundle upgrade instruction. Create a fresh invite and re-enroll that worker. This is an intentional 5.0-alpha compatibility break that removes the old dependency/YAML/Pydantic compatibility shims rather than carrying them forward.
 
 Pre-Workgate worker installations are not migrated or adopted automatically. Leave their state untouched, remove or stop the old service separately if needed, then create a fresh Workgate invite and re-enroll the machine.
 

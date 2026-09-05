@@ -525,7 +525,10 @@ def load_settings(
     selected_config: str | Path | None = config_path
     if selected_config is None:
         selected_config = os.getenv("WORKGATE_CONFIG")
-    if selected_config is None:
+    if (
+        selected_config is None
+        and os.getenv("WORKGATE_REMOTE_WORKER_RUNTIME") != "1"
+    ):
         default_config = app_paths().config_file
         selected_config = default_config if default_config.is_file() else None
     values = read_config_file(selected_config)

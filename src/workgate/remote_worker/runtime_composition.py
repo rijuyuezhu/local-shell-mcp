@@ -1,4 +1,4 @@
-"""Worker composition owner for the long-lived source-only worker process."""
+"""Worker composition owner for the long-lived remote worker process."""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager

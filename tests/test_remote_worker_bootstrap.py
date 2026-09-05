@@ -15,10 +15,11 @@ import pytest
 
 def _managed_runtime_report() -> dict[str, object]:
     from workgate.remote.bundle import worker_bundle_manifest
+    from workgate.remote.constants import REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION
 
     manifest = worker_bundle_manifest()
     return {
-        "protocol_version": 1,
+        "protocol_version": REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
         "runtime_kind": "managed_bundle",
         "worker_version": str(manifest["bundle_version"]),
         "bundle_version": str(manifest["bundle_version"]),
@@ -85,7 +86,7 @@ assert worker_info(".")["workgate_version"]
     assert result.returncode == 0, result.stderr
 
 
-def test_source_only_worker_cli_exposes_new_subcommands(tmp_path):
+def test_trimmed_worker_cli_exposes_new_subcommands(tmp_path):
     source_root = Path(__file__).resolve().parents[1] / "src"
     completed = subprocess.run(
         [sys.executable, "-m", "workgate.remote_worker", "--help"],
@@ -318,15 +319,13 @@ async def test_worker_dispatches_terminal_bridge_lifecycle(monkeypatch):
     ]
 
 
-def test_worker_session_start_result_serializes_with_dependency_shim(tmp_path):
+def test_worker_session_start_result_serializes_with_real_dependencies(
+    tmp_path,
+):
     script = """
 import asyncio
 import json
 import os
-
-from workgate.remote_worker.compat import install
-
-install()
 
 from workgate.config.settings import clear_settings_cache
 from workgate.remote_worker import worker

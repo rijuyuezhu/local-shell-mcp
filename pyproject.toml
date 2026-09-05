@@ -49,6 +49,13 @@ dev = [
 docs = [
     "mkdocs-material>=9.7.6",
 ]
+worker = [
+    "pathspec>=1.1.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pywinpty>=2.0.13; platform_system == 'Windows'",
+    "pyyaml>=6.0.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]

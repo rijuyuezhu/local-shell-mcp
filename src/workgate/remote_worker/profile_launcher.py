@@ -19,11 +19,12 @@ from .state import (
 )
 
 _REQUIRED_RUNTIME_FILES = (
+    "pyproject.toml",
+    "uv.lock",
     "workgate/__init__.py",
     "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
-    "workgate/remote_worker/compat.py",
     "workgate/remote_worker/identity.py",
     "workgate/remote_worker/lifecycle.py",
     "workgate/remote_worker/profile_launcher.py",
@@ -85,13 +86,24 @@ if (
     or not all((runtime / relative).is_file() for relative in required)
 ):
     raise SystemExit("stored worker runtime is incomplete or invalid")
-os.environ["WORKGATE_WORKER_STATE_DIR"] = str(state_dir)
-os.environ[{WORKER_DATA_DIR_ENV!r}] = str(data_dir)
-os.environ["WORKGATE_WORKER_PROFILE_ID"] = profile_id
-os.environ["WORKGATE_WORKER_RUNTIME_SHA256"] = digest
-sys.path.insert(0, str(runtime))
-from workgate.remote_worker.compat import main
-main(["run", profile_id])
+runtime_python = runtime / (
+    ".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python"
+)
+if not runtime_python.is_file():
+    raise SystemExit("stored worker runtime environment is unavailable")
+environment = os.environ.copy()
+environment["WORKGATE_WORKER_STATE_DIR"] = str(state_dir)
+environment[{WORKER_DATA_DIR_ENV!r}] = str(data_dir)
+environment["WORKGATE_WORKER_PROFILE_ID"] = profile_id
+environment["WORKGATE_WORKER_RUNTIME_SHA256"] = digest
+environment["WORKGATE_REMOTE_WORKER_RUNTIME"] = "1"
+environment["WORKGATE_WORKER_MANAGED"] = "1"
+environment["PYTHONPATH"] = str(runtime)
+os.execve(
+    str(runtime_python),
+    [str(runtime_python), "-m", "workgate.remote_worker", "run", profile_id],
+    environment,
+)
 """
 
 

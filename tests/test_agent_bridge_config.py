@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -105,6 +106,33 @@ def test_load_agent_manifest_valid_config(tmp_path):
     assert manifest.data.mcp_servers["docs"].enabled is False
     assert manifest.data.dynamic_tools.mcp is False
     assert manifest.data.skills.directory == "skills"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership/mode contract")
+def test_agent_manifest_directory_is_tightened_to_private_mode(tmp_path):
+    config_dir = tmp_path / "agent"
+    config_dir.mkdir(mode=0o755)
+    config_dir.chmod(0o755)
+    (config_dir / "config.json").write_text("{}", encoding="utf-8")
+
+    manifest = load_agent_manifest(config_dir)
+
+    assert manifest.status == "loaded"
+    assert config_dir.stat().st_mode & 0o777 == 0o700
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="symlink creation requires privileges on Windows"
+)
+def test_agent_manifest_rejects_symlink_config_directory(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    (actual / "config.json").write_text("{}", encoding="utf-8")
+    config_dir = tmp_path / "agent"
+    config_dir.symlink_to(actual, target_is_directory=True)
+
+    with pytest.raises(OSError, match="not a directory"):
+        load_agent_manifest(config_dir)
 
 
 def test_load_agent_manifest_invalid_json(tmp_path):

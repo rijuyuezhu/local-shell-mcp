@@ -445,7 +445,7 @@ def test_worker_serializer_and_controller_facade_preserve_error_type(
         )
 
 
-def test_source_only_bundle_contains_shared_error_module() -> None:
+def test_trimmed_worker_bundle_contains_shared_error_module() -> None:
     with tarfile.open(
         fileobj=io.BytesIO(worker_bundle_bytes()), mode="r:gz"
     ) as archive:

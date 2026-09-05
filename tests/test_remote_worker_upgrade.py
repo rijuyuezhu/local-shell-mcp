@@ -36,10 +36,11 @@ def _runtime_report(
     *, digest: str | None = None, version: str | None = None
 ) -> dict[str, Any]:
     from workgate.remote.bundle import worker_bundle_manifest
+    from workgate.remote.constants import REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION
 
     manifest = worker_bundle_manifest()
     return {
-        "protocol_version": 1,
+        "protocol_version": REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
         "runtime_kind": "managed_bundle",
         "worker_version": version or str(manifest["bundle_version"]),
         "bundle_version": version or str(manifest["bundle_version"]),
@@ -82,6 +83,17 @@ async def test_enrollment_requires_managed_runtime_without_consuming_invite(
         WorkerRuntimeCompatibilityError, match="generated invite"
     ):
         await manager.register_worker({"invite": invite.code})
+    assert invite.code in manager.invites
+
+    with pytest.raises(
+        WorkerRuntimeCompatibilityError, match="current generated invite"
+    ):
+        await manager.register_worker(
+            {
+                "invite": invite.code,
+                "runtime": {**_runtime_report(), "protocol_version": 1},
+            }
+        )
     assert invite.code in manager.invites
 
     with pytest.raises(WorkerRuntimeCompatibilityError, match="source"):
@@ -129,6 +141,31 @@ async def test_stale_managed_runtime_enrolls_only_for_upgrade(
     assert manager.workers["worker-a"].info["worker_bundle_sha256"] == (
         "0" * 64
     )
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_pre_uv_runtime_protocol(tmp_path, monkeypatch):
+    from workgate.remote.manager import WorkerRuntimeCompatibilityError
+
+    manager, registered = await _registered_manager(tmp_path, monkeypatch)
+    worker = manager.workers[registered["name"]]
+    original_info = dict(worker.info)
+
+    with pytest.raises(
+        WorkerRuntimeCompatibilityError, match="current generated invite"
+    ):
+        await manager.resume_worker(
+            registered["token"],
+            {
+                "workdir": str(tmp_path / "should-not-apply"),
+                "capabilities": ["files"],
+                "info": {"hostname": "stale-edge"},
+                "runtime": {**_runtime_report(), "protocol_version": 1},
+            },
+        )
+
+    assert worker.workdir == str(tmp_path)
+    assert worker.info == original_info
 
 
 @pytest.mark.asyncio
@@ -647,10 +684,16 @@ def _runtime_archive_bytes(
     from workgate.remote_worker import runtime
 
     replacements = overrides or {}
+    project_root = Path(__file__).resolve().parents[1]
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
         for relative in runtime._REQUIRED_RUNTIME_FILES:
-            payload = replacements.get(relative, f"# {relative}\n".encode())
+            if relative in replacements:
+                payload = replacements[relative]
+            elif relative in {"pyproject.toml", "uv.lock"}:
+                payload = (project_root / relative).read_bytes()
+            else:
+                payload = f"# {relative}\n".encode()
             info = tarfile.TarInfo(relative)
             info.size = len(payload)
             info.mode = 0o644
@@ -841,6 +884,14 @@ def test_manifest_requires_matching_version_digest_and_same_origin(monkeypatch):
 def _mock_runtime_download(monkeypatch, payload: bytes, version: str):
     from workgate.remote_worker import runtime
 
+    def fake_sync_runtime_environment(runtime_path):
+        python = runtime.runtime_python_path(runtime_path)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"")
+
+    monkeypatch.setattr(
+        runtime, "_sync_runtime_environment", fake_sync_runtime_environment
+    )
     digest = hashlib.sha256(payload).hexdigest()
     monkeypatch.setattr(
         runtime,
@@ -895,6 +946,39 @@ def test_install_runtime_is_transactional_and_short_circuits(
         "https://controller.test", instruction, current_version="3.9.1"
     )
     assert same["updated"] is False
+
+
+def test_worker_runtime_sync_uses_own_uv_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from workgate.remote_worker import runtime
+
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("requires uv to verify the managed worker environment")
+    managed = tmp_path / "runtime"
+    managed.mkdir()
+    project_root = Path(__file__).resolve().parents[1]
+    shutil.copy2(project_root / "pyproject.toml", managed / "pyproject.toml")
+    shutil.copy2(project_root / "uv.lock", managed / "uv.lock")
+    monkeypatch.setattr(runtime, "worker_uv_path", lambda: Path(uv))
+
+    runtime._sync_runtime_environment(managed)
+
+    python = runtime.runtime_python_path(managed)
+    assert python.is_file()
+    completed = subprocess.run(
+        [
+            str(python),
+            "-c",
+            "import pathspec, pydantic, pydantic_settings, yaml",
+        ],
+        cwd=managed,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_current_runtime_identity_requires_executing_managed_module(
@@ -1019,18 +1103,21 @@ def test_reexec_argv_and_pythonpath_are_safe(tmp_path, monkeypatch):
     from workgate.remote_worker import runtime
 
     monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
-    runtime_path = str(runtime.worker_runtime_dir())
+    runtime_dir = runtime.worker_runtime_dir()
+    runtime_python = runtime.runtime_python_path(runtime_dir)
+    runtime_python.parent.mkdir(parents=True)
+    runtime_python.write_bytes(b"")
+    runtime_path = str(runtime_dir)
     monkeypatch.setenv(
         "PYTHONPATH",
         os.pathsep.join(["/old", runtime_path, "/old"]),
     )
     environment = runtime.reexec_environment()
-    entries = environment["PYTHONPATH"].split(os.pathsep)
-    assert entries == [runtime_path, "/old"]
+    assert environment["PYTHONPATH"] == runtime_path
 
     argv = runtime.worker_reexec_argv()
     assert argv == [
-        sys.executable,
+        str(runtime_python),
         "-m",
         "workgate.remote_worker",
         "run",
@@ -1050,6 +1137,9 @@ def test_reexec_uses_selected_runtime_cwd_on_all_platforms(
     new_runtime = tmp_path / "runtimes" / new_digest
     old_runtime.mkdir(parents=True)
     new_runtime.mkdir(parents=True)
+    runtime_python = runtime.runtime_python_path(new_runtime)
+    runtime_python.parent.mkdir(parents=True)
+    runtime_python.write_bytes(b"")
     monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("WORKGATE_WORKER_RUNTIME_SHA256", new_digest)
     monkeypatch.chdir(old_runtime)
@@ -1067,7 +1157,7 @@ def test_reexec_uses_selected_runtime_cwd_on_all_platforms(
 
     monkeypatch.setattr(runtime.os, "execve", execve)
     runtime.reexec_worker()
-    assert captured["argv"][0] == sys.executable
+    assert captured["argv"][0] == str(runtime_python)
     assert captured["cwd"] == new_runtime
     assert captured["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(
         new_runtime
@@ -1305,11 +1395,25 @@ def test_join_script_installs_persistent_verified_runtime():
     assert 'export WORKGATE_WORKER_STATE_DIR="$STATE_DIR"' in script
     assert 'export WORKGATE_WORKER_DATA_DIR="$DATA_DIR"' in script
     assert 'export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"' in script
+    assert 'export PYTHONPATH="$RUNTIME_DIR"' in script
+    assert "${PYTHONPATH:+:$PYTHONPATH}" not in script
+    assert 'PYTHONPATH="$RUNTIME_DIR" \\' in script
     assert (
-        'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
+        'STATE_DIR="$(prepare_private_persistent_dir "$STATE_DIR" "worker state")"'
+        in script
     )
-    assert 'STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"' in script
-    assert 'DATA_DIR="$(cd "$DATA_DIR" && pwd -P)"' in script
+    assert (
+        'DATA_DIR="$(prepare_private_persistent_dir "$DATA_DIR" "worker data")"'
+        in script
+    )
+    assert (
+        'prepare_private_persistent_dir "$STATE_DIR/profiles" "worker profiles"'
+        in script
+    )
+    assert (
+        'prepare_private_persistent_dir "$PROFILE_DIR" "worker profile"'
+        in script
+    )
     assert '"workgate/app_paths.py"' in script
     assert 'cd "$RUNTIME_DIR"' in script
     assert 'ARGS=(connect --server "$SERVER" --invite "$INVITE"' in script
@@ -1319,6 +1423,60 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "--persist" not in script
     assert "ARGS=(--server" not in script
     assert 'rm -rf "$RUNTIME_DIR"' not in script
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership and mode contract")
+def test_join_script_private_persistent_dir_rejects_symlink_and_repairs_mode(
+    tmp_path: Path,
+) -> None:
+    from importlib import resources
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace("__REMOTE_WORKER_BUNDLE_PATH__", "/remote/worker-bundle.tgz")
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+
+    target = tmp_path / "target"
+    target.mkdir()
+    state_link = tmp_path / "state-link"
+    state_link.symlink_to(target, target_is_directory=True)
+    rejected = subprocess.run(
+        [
+            "bash",
+            "-c",
+            prefix
+            + '\nprepare_private_persistent_dir "$TEST_DIR" "worker state"\n',
+        ],
+        env={**os.environ, "TEST_DIR": str(state_link)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert rejected.returncode != 0
+    assert "worker state directory is unsafe" in rejected.stderr
+
+    private_dir = tmp_path / "private"
+    private_dir.mkdir(mode=0o755)
+    private_dir.chmod(0o755)
+    repaired = subprocess.run(
+        [
+            "bash",
+            "-c",
+            prefix
+            + '\nprepare_private_persistent_dir "$TEST_DIR" "worker data"\n',
+        ],
+        env={**os.environ, "TEST_DIR": str(private_dir)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert repaired.returncode == 0, repaired.stderr
+    assert Path(repaired.stdout.strip()) == private_dir.resolve()
+    assert private_dir.stat().st_mode & 0o777 == 0o700
 
 
 @pytest.mark.parametrize(
@@ -1563,6 +1721,20 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
     }
     assert (state_dir / "profiles/p_abcdefgh/profile.json").is_file()
     assert (state_dir / "run").is_file()
+    runtime_python = runtime_dir / ".venv" / "bin" / "python"
+    assert runtime_python.is_file()
+    dependencies = subprocess.run(
+        [
+            str(runtime_python),
+            "-c",
+            "import pathspec, pydantic, pydantic_settings, yaml",
+        ],
+        cwd=runtime_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert dependencies.returncode == 0, dependencies.stderr
 
 
 @pytest.mark.skipif(

@@ -45,6 +45,24 @@ def test_worker_state_dir_uses_xdg_state_home(
     assert state.worker_state_dir() == tmp_path / "xdg" / "workgate" / "worker"
 
 
+def test_worker_xdg_roots_must_be_raw_absolute_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_state_environment(monkeypatch)
+    monkeypatch.setattr(state.sys, "platform", "linux")
+    monkeypatch.setattr(state.Path, "home", classmethod(lambda _cls: tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", "~/.state-alt")
+    monkeypatch.setenv("XDG_DATA_HOME", "$HOME/data-alt")
+
+    assert state.worker_state_dir() == (
+        tmp_path / ".local" / "state" / "workgate" / "worker"
+    )
+    assert state.worker_data_dir() == (
+        tmp_path / ".local" / "share" / "workgate" / "worker"
+    )
+
+
 def test_worker_state_dir_uses_home_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

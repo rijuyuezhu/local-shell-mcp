@@ -51,7 +51,8 @@ def test_linux_relative_xdg_roots_fall_back(tmp_path: Path) -> None:
 
 def test_linux_uses_suitable_runtime_dir(tmp_path: Path) -> None:
     runtime = tmp_path / "xdg-runtime"
-    runtime.mkdir()
+    runtime.mkdir(mode=0o700)
+    runtime.chmod(0o700)
     paths = resolve_app_paths(
         env={"XDG_RUNTIME_DIR": str(runtime)},
         home=tmp_path / "home",
@@ -61,6 +62,30 @@ def test_linux_uses_suitable_runtime_dir(tmp_path: Path) -> None:
 
     assert paths.runtime_dir == runtime / "workgate"
     assert paths.temp_dir == runtime / "workgate" / "tmp"
+
+
+def test_linux_rejects_expanded_and_insecure_xdg_roots(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "xdg-runtime"
+    runtime.mkdir(mode=0o755)
+    runtime.chmod(0o755)
+
+    paths = resolve_app_paths(
+        env={
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": "~/.config-alt",
+            "XDG_STATE_HOME": "$HOME/state-alt",
+            "XDG_RUNTIME_DIR": str(runtime),
+        },
+        home=home,
+        platform="linux",
+        temp_root=tmp_path / "tmp",
+    )
+
+    assert paths.config_dir == home / ".config" / "workgate"
+    assert paths.state_dir == home / ".local" / "state" / "workgate"
+    assert paths.runtime_dir.parent == tmp_path / "tmp"
+    assert paths.runtime_dir.name.startswith("workgate-")
 
 
 def test_macos_lifetime_namespaces_do_not_overlap(tmp_path: Path) -> None:
@@ -98,5 +123,6 @@ def test_windows_uses_native_roaming_and_local_namespaces(
     assert paths.state_dir == local / "workgate" / "state"
     assert paths.data_dir == local / "workgate" / "data"
     assert paths.cache_dir == local / "workgate" / "cache"
-    assert paths.runtime_dir == tmp_path / "tmp" / "workgate" / "runtime"
+    assert paths.runtime_dir.parent == tmp_path / "tmp" / "workgate"
+    assert paths.runtime_dir.name.startswith("runtime-")
     assert len({paths.state_dir, paths.data_dir, paths.cache_dir}) == 3
