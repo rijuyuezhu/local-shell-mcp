@@ -105,7 +105,7 @@ The important mappings and actual gaps are:
 | File/download safety | Immutable private download snapshots, no-follow identity checks, bounded previews, symlink-aware serialized writes, snapshot-grounded hashline edits, and tokenized file links are composed with sessions. |
 | Audit safety | Uniform redaction, bounded records, private payload objects, paired tool lifecycle events, scope-sensitive full recovery, and machine-aware views preserve forensic detail without unbounded raw retention. |
 | Minimal MCP surface | Unregistered names use the SDK-standard unknown-tool path; the fork carries no aliases, hidden mappings, or custom removed-name behavior. |
-| CI and release enforcement | At this historical snapshot, the branch ran Linux/macOS/Windows tests, Windows ConPTY, OpenTUI on three OSes, verified platform-wheel build/install smoke on five native runners, universal package/sdist smoke, release-matrix validation, branch-coverage ratchets, and native bundled static tmux smoke on x86_64/aarch64. Bundled tmux was removed later; current releases use host-provided tmux. |
+| CI and release enforcement | Current CI runs branch-covered Linux pytest plus macOS/Windows pytest, Chromium Human UI E2E, Windows ConPTY, OpenTUI checks on all three OSes, platform-wheel build/install smoke on five native runners, universal package/sdist smoke, release-matrix validation, and native-artifact provenance checks. |
 
 ## What this migration branch added
 
