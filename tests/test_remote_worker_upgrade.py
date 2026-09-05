@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import sysconfig
@@ -1318,6 +1319,86 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "--persist" not in script
     assert "ARGS=(--server" not in script
     assert 'rm -rf "$RUNTIME_DIR"' not in script
+
+
+@pytest.mark.skipif(
+    not shutil.which("bash"),
+    reason="requires bash to exercise the bootstrap path policy",
+)
+@pytest.mark.parametrize(
+    ("windows_env", "expected_base"),
+    [
+        (
+            {"LOCALAPPDATA": "C:/Users/Test/AppData/Local"},
+            "C:/Users/Test/AppData/Local",
+        ),
+        (
+            {"USERPROFILE": "C:/Users/Test"},
+            "C:/Users/Test/AppData/Local",
+        ),
+    ],
+)
+def test_join_script_uses_native_windows_worker_namespaces(
+    tmp_path: Path,
+    windows_env: dict[str, str],
+    expected_base: str,
+) -> None:
+    from importlib import resources
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+    probe = (
+        prefix
+        + """\
+configure_app_dirs
+printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
+"""
+    )
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_uname = bin_dir / "uname"
+    fake_uname.write_text(
+        "#!/bin/sh\nprintf 'MINGW64_NT-10.0\\n'\n", encoding="utf-8"
+    )
+    fake_uname.chmod(0o700)
+
+    env = os.environ.copy()
+    for name in (
+        "LOCALAPPDATA",
+        "USERPROFILE",
+        "WORKGATE_WORKER_STATE_DIR",
+        "WORKGATE_WORKER_DATA_DIR",
+    ):
+        env.pop(name, None)
+    env.update(windows_env)
+    env["TEMP"] = "C:/Temp"
+    env["PATH"] = os.pathsep.join((str(bin_dir), env.get("PATH", "")))
+
+    completed = subprocess.run(
+        ["bash", "-c", probe],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines() == [
+        f"{expected_base}/workgate/state/worker",
+        f"{expected_base}/workgate/data/worker",
+        "C:/Temp",
+    ]
 
 
 @pytest.mark.skipif(

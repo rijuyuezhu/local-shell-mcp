@@ -27,6 +27,7 @@ from workgate.ops.transfer import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
+from workgate.ops.utils.path import temp_dir
 
 
 def _workspace(tmp_path, monkeypatch):
@@ -599,12 +600,11 @@ def test_unpack_commits_before_reporting_backup_cleanup_failure(
 def test_transfer_temp_pruning_preserves_recent_active_files(
     tmp_path, monkeypatch
 ):
-    root = _workspace(tmp_path, monkeypatch)
+    _workspace(tmp_path, monkeypatch)
     monkeypatch.setenv("WORKGATE_MAX_TMP_FILES", "0")
     monkeypatch.setenv("WORKGATE_MAX_TMP_BYTES", "0")
     clear_settings_cache()
-    directory = root / ".workgate" / "tmp"
-    directory.mkdir(parents=True)
+    directory = temp_dir()
     stale = directory / "stale.bin"
     recent = directory / "recent.bin"
     stale.write_bytes(b"stale")

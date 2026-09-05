@@ -141,14 +141,12 @@ def test_workspace_defaults_to_invocation_cwd(
 def test_default_config_is_discovered_from_platform_config_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    config_home = tmp_path / "config-home"
-    config_dir = config_home / "workgate"
+    config_dir = settings_module.app_paths().config_dir
     config_dir.mkdir(parents=True)
     workspace = tmp_path / "configured-workspace"
     (config_dir / "config.yaml").write_text(
         f'workspace_root: "{workspace}"\nport: 8123\n', encoding="utf-8"
     )
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
     monkeypatch.delenv("WORKGATE_CONFIG", raising=False)
     monkeypatch.delenv("WORKGATE_WORKSPACE_ROOT", raising=False)
 
@@ -172,6 +170,7 @@ def test_yaml_paths_must_be_absolute_after_expansion(
 
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     config.write_text('workspace_root: "~/project"\n', encoding="utf-8")
     assert load_settings(config).workspace_root == home / "project"
 

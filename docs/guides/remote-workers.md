@@ -26,10 +26,21 @@ Use workgate to create a remote worker invite named gpu1 with workdir /home/me/p
 
 The generated command is sensitive and expires after a short time. Paste it only on the intended machine. Enrollment prints a profile id and a reconnect command; keep the worker state directory private.
 
-If enrollment used a custom `WORKGATE_WORKER_STATE_DIR`, export the same value whenever you run the `workgate worker ...` lifecycle and update commands below. The saved reconnect launcher and an installed native service preserve their state directory internally, but a fresh administrative CLI process otherwise looks in the default worker state directory.
+The selected remote workdir is user content: it is the filesystem context in which Workgate is allowed to work. Worker-owned files are stored separately. On Linux, new workers use:
+
+```text
+${XDG_STATE_HOME:-~/.local/state}/workgate/worker/   # identity, profiles, logs/state
+${XDG_DATA_HOME:-~/.local/share}/workgate/worker/   # runtimes, launcher, stored Python
+```
+
+macOS and Windows use native per-user Workgate state/data locations. Clearing ordinary cache or runtime/temp storage does not remove an installed managed worker runtime.
+
+If enrollment used a custom `WORKGATE_WORKER_STATE_DIR`, export the same value whenever you run the `workgate worker ...` lifecycle and update commands below. For compatibility with older layouts, an explicit `WORKGATE_WORKER_STATE_DIR` also owns worker runtime/data files unless `WORKGATE_WORKER_DATA_DIR` is set separately. The saved reconnect launcher and an installed native service preserve the selected roots internally, but a fresh administrative CLI process otherwise uses the platform defaults.
 
 ```bash
 export WORKGATE_WORKER_STATE_DIR=/path/to/worker-state
+# Optional when state and installed runtime data should use different roots:
+export WORKGATE_WORKER_DATA_DIR=/path/to/worker-data
 ```
 
 ## Reconnect after a restart
@@ -66,7 +77,7 @@ workgate worker logs --follow
 workgate worker uninstall-service
 ```
 
-There is one native worker service per user state directory. Installing another profile rebinds that service; other profiles can still run in the foreground. Native Windows service management is not provided, so use the reconnect command from your preferred startup mechanism.
+There is one native worker service per user state directory. Installing another profile rebinds that service; other profiles can still run in the foreground. The native service records both its state root and installed-data root, so startup does not depend on the service manager's CWD. Native Windows service management is not provided, so use the reconnect command from your preferred startup mechanism.
 
 ## Use the remote machine
 
@@ -101,6 +112,8 @@ workgate worker update p_0123456789abcdef
 Use `--force` only when you intentionally want to reinstall the current runtime.
 
 Pre-Workgate worker installations are not migrated or adopted automatically. Leave their state untouched, remove or stop the old service separately if needed, then create a fresh Workgate invite and re-enroll the machine.
+
+The 5.0-alpha state/data layout change also does not automatically move an older Workgate worker root such as `~/.local/state/workgate-worker`. To keep using that installation temporarily, set `WORKGATE_WORKER_STATE_DIR` to the old absolute root; compatibility mode keeps its runtimes and launcher there too. A clean re-enrollment uses the new split state/data defaults. If you migrate files manually instead, stop the managed service first and preserve owner-private permissions.
 
 ## Revoke a worker
 

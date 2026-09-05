@@ -2,9 +2,44 @@
 
 import os
 import re
+import sys
 from pathlib import Path
 
-from ..app_paths import app_paths
+_APP_NAME = "workgate"
+
+
+def _expanded_absolute(value: str | None) -> Path | None:
+    """Expand an app-dir environment value only when it is absolute."""
+    if not value:
+        return None
+    expanded = Path(os.path.expandvars(os.path.expanduser(value)))
+    if not expanded.is_absolute():
+        return None
+    return expanded
+
+
+def _default_worker_roots() -> tuple[Path, Path]:
+    """Resolve bootstrap-compatible worker state/data roots with stdlib only."""
+    home = Path.home().expanduser()
+    if sys.platform == "darwin":
+        support = home / "Library" / "Application Support" / _APP_NAME
+        return support / "state" / "worker", support / "data" / "worker"
+    if sys.platform.startswith("win"):
+        local = _expanded_absolute(os.getenv("LOCALAPPDATA")) or (
+            home / "AppData" / "Local"
+        )
+        return (
+            local / _APP_NAME / "state" / "worker",
+            local / _APP_NAME / "data" / "worker",
+        )
+    state_base = _expanded_absolute(os.getenv("XDG_STATE_HOME")) or (
+        home / ".local" / "state"
+    )
+    data_base = _expanded_absolute(os.getenv("XDG_DATA_HOME")) or (
+        home / ".local" / "share"
+    )
+    return state_base / _APP_NAME / "worker", data_base / _APP_NAME / "worker"
+
 
 _RUNTIME_METADATA_FILE_NAME = "runtime.json"
 _PROFILE_METADATA_FILE_NAME = "profile.json"
@@ -19,10 +54,9 @@ def worker_state_dir() -> Path:
     """Return the absolute persistent state directory for one installation."""
     configured = os.getenv("WORKGATE_WORKER_STATE_DIR")
     if configured:
-        path = Path(configured).expanduser()
-    else:
-        path = app_paths().worker_state_dir
-    return path.resolve()
+        return Path(configured).expanduser().resolve()
+    state_dir, _ = _default_worker_roots()
+    return state_dir.resolve()
 
 
 def worker_data_dir() -> Path:
@@ -33,7 +67,8 @@ def worker_data_dir() -> Path:
     legacy_state = os.getenv("WORKGATE_WORKER_STATE_DIR")
     if legacy_state:
         return Path(legacy_state).expanduser().resolve()
-    return app_paths().worker_data_dir.resolve()
+    _, data_dir = _default_worker_roots()
+    return data_dir.resolve()
 
 
 def worker_profiles_dir() -> Path:

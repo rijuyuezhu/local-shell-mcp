@@ -120,8 +120,6 @@ source = ["workgate"]
 source = [
     "src/workgate",
     "workgate",
-    "*/.workgate-worker/runtime/workgate",
-    "*/.workgate-worker/runtimes/*/workgate",
     "*/runtime/workgate",
     "*/runtimes/*/workgate",
 ]

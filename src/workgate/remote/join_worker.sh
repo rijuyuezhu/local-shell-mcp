@@ -8,10 +8,10 @@ NAME=""
 WORKDIR=""
 PROFILE_ID=""
 BACKGROUND=0
+SYSTEM_TMPDIR="${TMPDIR:-/tmp}"
 TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
-SYSTEM_TMPDIR="${TMPDIR:-/tmp}"
 STATE_DIR=""
 DATA_DIR=""
 RUNTIME_DIGEST=""
@@ -43,37 +43,77 @@ absolute_env_or_empty() {
   esac
 }
 
+is_windows_shell() {
+  case "${1:-}" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+windows_absolute_env_or_empty() {
+  local value="${1:-}"
+  case "$value" in
+    [A-Za-z]:[\\/]*|/*) ;;
+    *) printf '%s\n' ""; return 0 ;;
+  esac
+  if have cygpath; then
+    cygpath -m "$value" 2>/dev/null || printf '%s\n' ""
+  else
+    printf '%s\n' "$value" | tr '\\' '/'
+  fi
+}
+
 configure_app_dirs() {
-  local xdg_state xdg_data
-  if [ -n "${WORKGATE_WORKER_STATE_DIR:-}" ]; then
-    STATE_DIR="$WORKGATE_WORKER_STATE_DIR"
-  elif [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
-    STATE_DIR="$HOME/Library/Application Support/workgate/state/worker"
+  local platform xdg_state xdg_data local_appdata user_profile windows_tmp
+  local default_state default_data
+  platform="$(uname -s 2>/dev/null || true)"
+
+  if [ "$platform" = "Darwin" ]; then
+    default_state="$HOME/Library/Application Support/workgate/state/worker"
+    default_data="$HOME/Library/Application Support/workgate/data/worker"
+  elif is_windows_shell "$platform"; then
+    local_appdata="$(windows_absolute_env_or_empty "${LOCALAPPDATA:-}")"
+    if [ -z "$local_appdata" ]; then
+      user_profile="$(windows_absolute_env_or_empty "${USERPROFILE:-${HOME:-}}")"
+      [ -n "$user_profile" ] || die "cannot determine the Windows user profile directory"
+      local_appdata="$user_profile/AppData/Local"
+    fi
+    default_state="$local_appdata/workgate/state/worker"
+    default_data="$local_appdata/workgate/data/worker"
+    windows_tmp="$(windows_absolute_env_or_empty "${TEMP:-${TMP:-}}")"
+    if [ -n "$windows_tmp" ]; then
+      SYSTEM_TMPDIR="$windows_tmp"
+    fi
   else
     xdg_state="$(absolute_env_or_empty "${XDG_STATE_HOME:-}")"
-    STATE_DIR="${xdg_state:-$HOME/.local/state}/workgate/worker"
+    xdg_data="$(absolute_env_or_empty "${XDG_DATA_HOME:-}")"
+    default_state="${xdg_state:-$HOME/.local/state}/workgate/worker"
+    default_data="${xdg_data:-$HOME/.local/share}/workgate/worker"
   fi
 
+  STATE_DIR="${WORKGATE_WORKER_STATE_DIR:-$default_state}"
   if [ -n "${WORKGATE_WORKER_DATA_DIR:-}" ]; then
     DATA_DIR="$WORKGATE_WORKER_DATA_DIR"
   elif [ -n "${WORKGATE_WORKER_STATE_DIR:-}" ]; then
     # Compatibility: the legacy state override also owned runtime installation data.
     DATA_DIR="$WORKGATE_WORKER_STATE_DIR"
-  elif [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
-    DATA_DIR="$HOME/Library/Application Support/workgate/data/worker"
   else
-    xdg_data="$(absolute_env_or_empty "${XDG_DATA_HOME:-}")"
-    DATA_DIR="${xdg_data:-$HOME/.local/share}/workgate/worker"
+    DATA_DIR="$default_data"
   fi
 }
 
 create_bootstrap_tmpdir() {
-  local runtime_base xdg_runtime
-  xdg_runtime="$(absolute_env_or_empty "${XDG_RUNTIME_DIR:-}")"
-  if [ -n "$xdg_runtime" ] && [ -d "$xdg_runtime" ] && [ -w "$xdg_runtime" ] && [ -x "$xdg_runtime" ]; then
-    runtime_base="$xdg_runtime/workgate"
+  local platform runtime_base xdg_runtime
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    runtime_base="$SYSTEM_TMPDIR/workgate/runtime"
   else
-    runtime_base="$SYSTEM_TMPDIR/workgate-$(id -u 2>/dev/null || printf 'user')"
+    xdg_runtime="$(absolute_env_or_empty "${XDG_RUNTIME_DIR:-}")"
+    if [ -n "$xdg_runtime" ] && [ -d "$xdg_runtime" ] && [ -w "$xdg_runtime" ] && [ -x "$xdg_runtime" ]; then
+      runtime_base="$xdg_runtime/workgate"
+    else
+      runtime_base="$SYSTEM_TMPDIR/workgate-$(id -u 2>/dev/null || printf 'user')"
+    fi
   fi
   mkdir -p "$runtime_base"
   chmod 700 "$runtime_base" 2>/dev/null || true

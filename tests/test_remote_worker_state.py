@@ -10,6 +10,7 @@ def _clear_state_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("WORKGATE_WORKER_DATA_DIR", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
 
 
 def test_worker_state_dir_prefers_explicit_configuration(
@@ -38,6 +39,7 @@ def test_worker_state_dir_uses_xdg_state_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_state_environment(monkeypatch)
+    monkeypatch.setattr(state.sys, "platform", "linux")
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
 
     assert state.worker_state_dir() == tmp_path / "xdg" / "workgate" / "worker"
@@ -47,11 +49,36 @@ def test_worker_state_dir_uses_home_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_state_environment(monkeypatch)
+    monkeypatch.setattr(state.sys, "platform", "linux")
     monkeypatch.setattr(state.Path, "home", classmethod(lambda _cls: tmp_path))
 
     assert state.worker_state_dir() == (
         tmp_path / ".local" / "state" / "workgate" / "worker"
     )
+
+
+def test_worker_defaults_use_native_macos_namespaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_state_environment(monkeypatch)
+    monkeypatch.setattr(state.sys, "platform", "darwin")
+    monkeypatch.setattr(state.Path, "home", classmethod(lambda _cls: tmp_path))
+
+    support = tmp_path / "Library" / "Application Support" / "workgate"
+    assert state.worker_state_dir() == support / "state" / "worker"
+    assert state.worker_data_dir() == support / "data" / "worker"
+
+
+def test_worker_defaults_use_native_windows_namespaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_state_environment(monkeypatch)
+    local = tmp_path / "local"
+    monkeypatch.setattr(state.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+
+    assert state.worker_state_dir() == local / "workgate" / "state" / "worker"
+    assert state.worker_data_dir() == local / "workgate" / "data" / "worker"
 
 
 def test_legacy_worker_state_override_also_controls_data_root(
@@ -75,6 +102,7 @@ def test_worker_state_and_data_defaults_are_separate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_state_environment(monkeypatch)
+    monkeypatch.setattr(state.sys, "platform", "linux")
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
 

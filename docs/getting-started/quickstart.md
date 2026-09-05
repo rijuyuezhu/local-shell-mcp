@@ -36,7 +36,6 @@ WORKGATE_MODE=mcp
 WORKGATE_HOST=127.0.0.1
 WORKGATE_PORT=8765
 WORKGATE_WORKSPACE_ROOT=/path/to/your/workspace
-WORKGATE_STATE_DIR=/path/to/your/workspace/.workgate
 WORKGATE_BASE_URL=https://your-public-host.example.com
 WORKGATE_AUTH_MODE=oauth
 WORKGATE_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
@@ -44,7 +43,7 @@ WORKGATE_ALLOW_FULL_CONTROL=false
 CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
-`WORKGATE_BASE_URL` is the public origin without `/mcp`. Keep the state directory private: it contains credentials and activity data used by the service.
+`WORKGATE_BASE_URL` is the public origin without `/mcp`. `WORKGATE_WORKSPACE_ROOT` is explicit here because a long-running service should not depend on its launcher's incidental CWD. Workgate state uses the platform-native user state directory by default; keep it private because it contains credentials and activity data. Set `WORKGATE_STATE_DIR` only when you intentionally need a custom absolute state root.
 
 Leave the example `CLOUDFLARE_TUNNEL_TOKEN` value in place for now. You will replace it with the token copied from Cloudflare in [Step 4](#4-create-and-start-the-tunnel); the detailed dashboard flow is in [Cloudflare Tunnel](cloudflare-tunnel.md).
 

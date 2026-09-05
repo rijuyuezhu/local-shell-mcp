@@ -9,7 +9,7 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from ..app_paths import app_paths
+from ..app_paths import app_paths, ensure_private_directory
 from ..persistence import StateLayout
 
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
@@ -513,8 +513,8 @@ def env_overrides() -> dict[str, Any]:
 def initialize_runtime_directories(settings: Settings) -> None:
     """Create the filesystem roots required by a configured runtime."""
     settings.workspace_root.mkdir(parents=True, exist_ok=True)
-    settings.state_dir.mkdir(parents=True, exist_ok=True)
-    settings.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(settings.state_dir)
+    ensure_private_directory(settings.audit_log_path.parent)
 
 
 def load_settings(

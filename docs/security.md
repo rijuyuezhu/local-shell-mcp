@@ -64,7 +64,7 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 
 Agent Bridge authentication is separate from the built-in OAuth server that protects this `workgate` deployment. It authenticates the control server as a client of configured upstream MCP servers.
 
-- Public manifest files may contain literal `env` and `headers` for compatibility, but new credentials should use structured secret references and `auth.mode="secret"`. Secret references are resolved only immediately before transport startup.
+- Declarative Agent Bridge manifest files live in the platform config namespace and may contain literal `env` and `headers` for compatibility, so config files must not be assumed non-sensitive. New credentials should use structured secret references and `auth.mode="secret"`. Secret references are resolved only immediately before transport startup.
 - Private values, OAuth tokens, dynamic client information, absolute expiry timestamps, and discovered authorization-server metadata are stored under `state_dir/agent_auth`. The store is versioned and size-bounded, uses a cross-process lock and atomic replacement, and is owner-only (`0700` directory and `0600` files on POSIX). Corrupt or unsupported data fails explicitly and is not reset automatically.
 - `workgate mcp secret set ... --stdin` is the only secret-value input surface. Values are not accepted as command arguments, printed by list/status commands, serialized into the public manifest, or returned through MCP tools.
 - Upstream OAuth uses the MCP SDK's protected-resource and authorization-server discovery, PKCE, state validation, dynamic client registration, refresh, and HTTP authentication. The interactive CLI binds a one-shot callback to a random `127.0.0.1` port. Normal server operation is noninteractive: it may refresh stored credentials, but a new authorization requirement fails immediately with instructions to run the CLI.
@@ -206,7 +206,7 @@ Managed-job logs are appended before metadata accounting. If bounded lock retrie
 
 Remote enrollment invitations are one-time bearer capabilities. Prefer `worker enroll/connect --invite-stdin` or the generated join command, avoid copying invites into durable scripts, and revoke a worker whose state directory may be compromised. The private worker identity stores the controller origin, assigned name, access token, and canonical workdir; keep the entire worker state directory owner-private.
 
-Linux systemd-user units and macOS launchd plists invoke a stable private launcher plus `worker run`. They do not contain the invitation, access token, controller URL, or worker name. The launcher derives the state directory from its own path, prefers the verified installed runtime, and reads identity only inside the worker process. Windows service installation is deliberately unsupported rather than emulated with an untracked detached process. The launchd plist also carries a sanitized explicit tool `PATH`: the active Python and private launcher directories, standard Homebrew locations, absolute entries exported by the GUI launchd domain, and system directories. It never copies the installer process's transient `PATH`, and managed startup/update repairs older installed plists.
+Linux systemd-user units and macOS launchd plists invoke a stable private launcher plus `worker run`. They do not contain the invitation, access token, controller URL, or worker name. The launcher is installed in the worker data namespace, receives the private state root explicitly, prefers the verified installed runtime from data, and reads identity only inside the worker process. Windows service installation is deliberately unsupported rather than emulated with an untracked detached process. The launchd plist also carries a sanitized explicit tool `PATH`: the active Python and private launcher directories, standard Homebrew locations, absolute entries exported by the GUI launchd domain, and system directories. It never copies the installer process's transient `PATH`, and managed startup/update repairs older installed plists.
 
 Service lifecycle commands are local CLI operations, not MCP tools. A controller can still request a verified idle-time runtime upgrade through the existing authenticated worker channel, so a trusted controller has authority to replace worker code. Automatic and manual updates enforce same-origin URLs and redirects, bounded downloads/extraction, version/digest checks, safe archive members, atomic replacement, rollback, and credential-free re-exec. The single-instance lock is retained across re-exec so a competing manual process cannot consume jobs during handoff.
 
@@ -219,7 +219,7 @@ wheel platform tag. The universal wheel and sdist remain native-payload-free.
 Build and smoke checks validate host platform/architecture, executable magic,
 wheel purity/tag metadata, deterministic-gzip metadata, compressed and expanded
 limits, and embedded SHA-256 before installation or execution. Runtime extraction
-uses an owner-private versioned directory, a cross-process lock, digest checks,
+uses an owner-private versioned cache directory, a cross-process lock, digest checks,
 atomic replacement, and executable-permission validation; a caller-supplied
 `ui_tui_command` remains an explicit administrator-controlled override.
 
@@ -239,7 +239,7 @@ Payload objects use private atomic replacement and are read through no-follow re
 
 The session-bound `audit_tail` tool and Human UI lists require `audit:read`. Resolving one retained reference additionally requires `audit:full` and a stable entry id; Human UI detail retains operation-sensitive shell/file/share/Git/remote checks. The current `audit_tail` call is excluded by exact lifecycle id rather than hiding all audit-query history.
 
-Treat `/workspace/.workgate/audit_log/` as sensitive session state, not as a sanitized telemetry stream. Best-effort redaction does not prove that unknown secret formats or application-sensitive data are absent. Keep JSONL and payload objects in the controlled state directory, use the event/log/payload/retention limits for short-term retention, and avoid uploading either to third-party systems unless they are trusted for the same data.
+Treat the Workgate audit directory (for example `${XDG_STATE_HOME:-~/.local/state}/workgate/audit_log/` on Linux) as sensitive session state, not as a sanitized telemetry stream. Best-effort redaction does not prove that unknown secret formats or application-sensitive data are absent. Keep JSONL and payload objects in the controlled state directory, use the event/log/payload/retention limits for short-term retention, and avoid uploading either to third-party systems unless they are trusted for the same data.
 
 ## Threats considered
 

@@ -80,3 +80,23 @@ def test_macos_lifetime_namespaces_do_not_overlap(tmp_path: Path) -> None:
     assert paths.config_dir.name == "config"
     assert paths.state_dir.name == "state"
     assert paths.data_dir.name == "data"
+
+
+def test_windows_uses_native_roaming_and_local_namespaces(
+    tmp_path: Path,
+) -> None:
+    roaming = tmp_path / "roaming"
+    local = tmp_path / "local"
+    paths = resolve_app_paths(
+        env={"APPDATA": str(roaming), "LOCALAPPDATA": str(local)},
+        home=tmp_path / "home",
+        platform="win32",
+        temp_root=tmp_path / "tmp",
+    )
+
+    assert paths.config_dir == roaming / "workgate" / "config"
+    assert paths.state_dir == local / "workgate" / "state"
+    assert paths.data_dir == local / "workgate" / "data"
+    assert paths.cache_dir == local / "workgate" / "cache"
+    assert paths.runtime_dir == tmp_path / "tmp" / "workgate" / "runtime"
+    assert len({paths.state_dir, paths.data_dir, paths.cache_dir}) == 3
