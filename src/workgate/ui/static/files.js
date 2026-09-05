@@ -278,10 +278,10 @@ export function createFilesController({
       elements.filePreviewMeta.textContent = `${formatFileBytes(payload.bytes)} · ${payload.preview_bytes || 0} preview bytes · hex`;
     } else {
       const source = text(payload.content, "");
-      const language = window.LsmSyntax
-        ? window.LsmSyntax.languageForPath(entry.path, payload.media_type)
+      const language = window.WorkgateSyntax
+        ? window.WorkgateSyntax.languageForPath(entry.path, payload.media_type)
         : "plain";
-      if (window.LsmSyntax && language !== "plain") window.LsmSyntax.render(pre, source, language);
+      if (window.WorkgateSyntax && language !== "plain") window.WorkgateSyntax.render(pre, source, language);
       else pre.textContent = source;
       if (payload.preview_truncated) elements.filePreviewMeta.textContent += " · preview truncated";
     }

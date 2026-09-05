@@ -150,7 +150,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert renderer.status_code == 200
     assert renderer.headers["cache-control"] == "no-cache"
     assert renderer.headers["x-content-type-options"] == "nosniff"
-    assert "LsmTerminalRenderer" in renderer.text
+    assert "WorkgateTerminalRenderer" in renderer.text
     assert "MAX_RUNS = 10_000" in renderer.text
     assert "createTextNode" in renderer.text
     assert "innerHTML" not in renderer.text
@@ -158,7 +158,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     xterm_bundle = client.get("/ui/assets/xterm_bundle.js")
     assert xterm_bundle.status_code == 200
     assert xterm_bundle.headers["x-content-type-options"] == "nosniff"
-    assert "LsmXterm" in xterm_bundle.text
+    assert "WorkgateXterm" in xterm_bundle.text
     assert "createImageAddon" in xterm_bundle.text
     assert "WEB_IMAGE_ADDON_OPTIONS" in xterm_bundle.text
     assert "sourceMappingURL" not in xterm_bundle.text
@@ -280,7 +280,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "const terminalSpecialKeys = Object.freeze" in terminal_script.text
     assert "const terminalHistoryLimit = 100;" in terminal_script.text
     assert "navigateTerminalHistory" in terminal_script.text
-    assert "LsmTerminalRenderer" in terminal_script.text
+    assert "WorkgateTerminalRenderer" in terminal_script.text
     assert "controllerState.filePreviewGeneration" in files_script.text
     assert (
         "generation !== controllerState.filePreviewGeneration"

@@ -42,7 +42,7 @@
 
   function ensureTerminal() {
     if (terminal) return true;
-    const api = globalThis.LsmXterm;
+    const api = globalThis.WorkgateXterm;
     if (!api || typeof api.Terminal !== "function" || typeof api.FitAddon !== "function") {
       state.textContent = "xterm assets unavailable";
       return false;

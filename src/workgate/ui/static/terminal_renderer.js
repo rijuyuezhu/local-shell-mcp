@@ -304,6 +304,6 @@
   }
 
   const api = { MAX_RUNS, paletteColor, parseAnsi, renderInto };
-  if (typeof globalThis !== "undefined") globalThis.LsmTerminalRenderer = api;
+  if (typeof globalThis !== "undefined") globalThis.WorkgateTerminalRenderer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

@@ -193,7 +193,7 @@ export function createAuditView({ text, formatFileBytes }) {
     const pre = document.createElement("pre");
     pre.className = "audit-detail-json";
     const { source, language } = auditValueSource(value, emptyLabel);
-    if (window.LsmSyntax) window.LsmSyntax.render(pre, source, language);
+    if (window.WorkgateSyntax) window.WorkgateSyntax.render(pre, source, language);
     else pre.textContent = source;
     target.append(pre);
   }

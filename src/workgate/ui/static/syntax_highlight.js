@@ -150,5 +150,5 @@
 
   const api = { languageForPath, render, tokenize };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
-  if (typeof window !== "undefined") window.LsmSyntax = api;
+  if (typeof window !== "undefined") window.WorkgateSyntax = api;
 })();

@@ -62,7 +62,7 @@ export function createTerminalController({
   function renderTerminalOutput(value, { scrollToBottom = false } = {}) {
     const output = String(value ?? "");
     controllerState.terminalLastOutput = output;
-    const renderer = globalThis.LsmTerminalRenderer;
+    const renderer = globalThis.WorkgateTerminalRenderer;
     if (renderer && typeof renderer.renderInto === "function") {
       renderer.renderInto(elements.terminalOutput, output);
     } else {
@@ -162,7 +162,7 @@ export function createTerminalController({
 
   function ensureTerminalXterm() {
     if (controllerState.terminalXterm) return true;
-    const api = globalThis.LsmXterm;
+    const api = globalThis.WorkgateXterm;
     if (!api || typeof api.Terminal !== "function" || typeof api.FitAddon !== "function") {
       return false;
     }

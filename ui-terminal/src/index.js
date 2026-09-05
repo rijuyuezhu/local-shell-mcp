@@ -6,7 +6,7 @@ import {
   createImageAddon,
 } from "./image-support.js";
 
-globalThis.LsmXterm = Object.freeze({
+globalThis.WorkgateXterm = Object.freeze({
   FitAddon,
   Terminal,
   WEB_IMAGE_ADDON_OPTIONS,
