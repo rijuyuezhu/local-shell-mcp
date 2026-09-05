@@ -13,8 +13,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .. import __version__
+from ..app_paths import app_paths, ensure_private_directory
 from ..config.settings import Settings, get_settings
-from ..persistence import StateLayout
 from .contracts import TUI_EXECUTABLE_NAME
 from .security import (
     UI_API_PREFIX,
@@ -54,23 +54,20 @@ def _copy_bounded_gzip(source: Path, destination: Path) -> None:
 
 
 def materialize_embedded_tui(
-    state_dir: Path,
+    cache_dir: Path,
     *,
     payload: Path | None = None,
 ) -> Path | None:
-    """Atomically unpack the platform OpenTUI payload into private runtime state."""
+    """Atomically unpack the platform OpenTUI payload into regenerable cache."""
     payload = embedded_tui_payload() if payload is None else payload
     if payload is None or not payload.is_file():
         return None
 
-    target_dir = StateLayout(state_dir).ui_runtime_dir / __version__
+    target_dir = ensure_private_directory(cache_dir / __version__)
     target = target_dir / payload.name.removesuffix(".gz")
     if target.is_file():
         return target
 
-    target_dir.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        target_dir.chmod(0o700)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{target.name}.", suffix=".tmp", dir=target_dir
     )
@@ -155,7 +152,7 @@ def resolve_tui_command(settings: Settings | None = None) -> list[str]:
             return [str(candidate)]
 
     try:
-        embedded = materialize_embedded_tui(active.state_dir)
+        embedded = materialize_embedded_tui(app_paths().ui_runtime_dir)
     except (EOFError, OSError, ValueError) as exc:
         raise RuntimeError(
             f"Unable to prepare embedded OpenTUI runtime: {exc}"

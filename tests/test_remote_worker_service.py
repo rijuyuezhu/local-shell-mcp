@@ -1165,9 +1165,9 @@ def test_managed_launcher_binds_content_addressed_runtime(
     assert changed is True
     launcher = service.launcher_path().read_text(encoding="utf-8")
     assert f"runtime_digest = {digest!r}" in launcher
-    assert 'runtime_dir = state_dir / "runtimes" / runtime_digest' in launcher
+    assert 'runtime_dir = data_dir / "runtimes" / runtime_digest' in launcher
     assert "WORKGATE_WORKER_RUNTIME_SHA256" in launcher
-    assert 'runtime_dir = state_dir / "runtime"' not in launcher
+    assert 'runtime_dir = data_dir / "runtime"' not in launcher
     with pytest.raises(ValueError, match="runtime digest"):
         service._launcher_text("invalid")
 

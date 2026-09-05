@@ -12,6 +12,7 @@ import workgate.main as cli
 import workgate.ui.cli as tui_cli
 from workgate import __version__
 from workgate.agent_bridge.auth_store import AgentAuthStore
+from workgate.app_paths import app_paths
 from workgate.config.settings import load_settings
 from workgate.config.surface import (
     SETTING_SPECS,
@@ -379,7 +380,8 @@ def test_server_overrides_include_only_explicit_values():
 
 
 def _write_agent_manifest(state_dir, server):
-    config_dir = state_dir / "agent_config"
+    _ = state_dir
+    config_dir = app_paths().agent_config_dir
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "config.json").write_text(
         json.dumps({"version": 1, "mcpServers": {"docs": server}}),

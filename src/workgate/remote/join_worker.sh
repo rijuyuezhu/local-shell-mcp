@@ -11,7 +11,9 @@ BACKGROUND=0
 TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
-STATE_DIR="${WORKGATE_WORKER_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/workgate-worker}"
+SYSTEM_TMPDIR="${TMPDIR:-/tmp}"
+STATE_DIR=""
+DATA_DIR=""
 RUNTIME_DIGEST=""
 RUNTIME_VERSION=""
 RUNTIME_DIR=""
@@ -32,6 +34,50 @@ die() {
 
 have() {
   command -v "$1" >/dev/null 2>&1
+}
+
+absolute_env_or_empty() {
+  case "${1:-}" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s\n' "" ;;
+  esac
+}
+
+configure_app_dirs() {
+  local xdg_state xdg_data
+  if [ -n "${WORKGATE_WORKER_STATE_DIR:-}" ]; then
+    STATE_DIR="$WORKGATE_WORKER_STATE_DIR"
+  elif [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
+    STATE_DIR="$HOME/Library/Application Support/workgate/state/worker"
+  else
+    xdg_state="$(absolute_env_or_empty "${XDG_STATE_HOME:-}")"
+    STATE_DIR="${xdg_state:-$HOME/.local/state}/workgate/worker"
+  fi
+
+  if [ -n "${WORKGATE_WORKER_DATA_DIR:-}" ]; then
+    DATA_DIR="$WORKGATE_WORKER_DATA_DIR"
+  elif [ -n "${WORKGATE_WORKER_STATE_DIR:-}" ]; then
+    # Compatibility: the legacy state override also owned runtime installation data.
+    DATA_DIR="$WORKGATE_WORKER_STATE_DIR"
+  elif [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
+    DATA_DIR="$HOME/Library/Application Support/workgate/data/worker"
+  else
+    xdg_data="$(absolute_env_or_empty "${XDG_DATA_HOME:-}")"
+    DATA_DIR="${xdg_data:-$HOME/.local/share}/workgate/worker"
+  fi
+}
+
+create_bootstrap_tmpdir() {
+  local runtime_base xdg_runtime
+  xdg_runtime="$(absolute_env_or_empty "${XDG_RUNTIME_DIR:-}")"
+  if [ -n "$xdg_runtime" ] && [ -d "$xdg_runtime" ] && [ -w "$xdg_runtime" ] && [ -x "$xdg_runtime" ]; then
+    runtime_base="$xdg_runtime/workgate"
+  else
+    runtime_base="$SYSTEM_TMPDIR/workgate-$(id -u 2>/dev/null || printf 'user')"
+  fi
+  mkdir -p "$runtime_base"
+  chmod 700 "$runtime_base" 2>/dev/null || true
+  TMPDIR="$(mktemp -d "$runtime_base/worker-bootstrap.XXXXXX")"
 }
 
 parse_args() {
@@ -80,7 +126,7 @@ find_existing_python() {
 
 download_temporary_uv() {
   mkdir -p "$TMPDIR/uv-bin"
-  echo "uv not found; downloading a temporary uv into the worker state directory..." >&2
+  echo "uv not found; downloading a temporary uv for worker bootstrap..." >&2
   curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="$TMPDIR/uv-bin" sh >/dev/null
   if [ -x "$TMPDIR/uv-bin/uv" ]; then
     UV_BIN="$TMPDIR/uv-bin/uv"
@@ -128,7 +174,7 @@ PY
 }
 
 select_launcher_path() {
-  LAUNCHER="$($PYTHON_BIN - "$STATE_DIR" <<'PY'
+  LAUNCHER="$($PYTHON_BIN - "$DATA_DIR" <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -166,6 +212,7 @@ install_launcher() {
   installed_launcher="$(
     cd "$RUNTIME_DIR"
     WORKGATE_WORKER_STATE_DIR="$STATE_DIR" \
+    WORKGATE_WORKER_DATA_DIR="$DATA_DIR" \
     PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON_BIN" - "$PYTHON_BIN" <<'PY'
 import sys
@@ -240,7 +287,7 @@ PY
 configure_runtime() {
   RUNTIME_DIGEST="$(cat "$TMPDIR/bundle-sha256")"
   RUNTIME_VERSION="$(cat "$TMPDIR/bundle-version")"
-  RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"
+  RUNTIME_DIR="$DATA_DIR/runtimes/$RUNTIME_DIGEST"
   RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"
 }
 
@@ -263,6 +310,7 @@ except (OSError, ValueError, json.JSONDecodeError):
     raise SystemExit(1)
 required = (
     "workgate/__init__.py",
+    "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
     "workgate/remote_worker/compat.py",
@@ -348,7 +396,7 @@ install_bundle() {
   "$PYTHON_BIN" - \
     "$TMPDIR/worker.tgz" \
     "$TMPDIR/bundle-url" \
-    "$STATE_DIR/install.lock" \
+    "$DATA_DIR/install.lock" \
     "$RUNTIME_DIR" \
     "$RUNTIME_METADATA" \
     "$(cat "$TMPDIR/bundle-version")" \
@@ -390,6 +438,7 @@ staging = state_dir / f"{expected_digest}.install.{uuid.uuid4().hex}"
 backup = state_dir / f"{expected_digest}.previous.{uuid.uuid4().hex}"
 required = (
     "workgate/__init__.py",
+    "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
     "workgate/remote_worker/compat.py",
@@ -589,6 +638,7 @@ start_worker() {
   echo "Starting worker with $PYTHON_BIN..." >&2
   printf 'Worker profile: %s\nReconnect with:\n  %q %q\n' "$PROFILE_ID" "$LAUNCHER" "$PROFILE_ID" >&2
   export WORKGATE_WORKER_STATE_DIR="$STATE_DIR"
+  export WORKGATE_WORKER_DATA_DIR="$DATA_DIR"
   export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
   export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
   worker_args
@@ -604,10 +654,14 @@ start_worker() {
 main() {
   parse_args "$@"
   require_basic_tools
+  configure_app_dirs
   mkdir -p "$STATE_DIR"
   STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"
   chmod 700 "$STATE_DIR" 2>/dev/null || true
-  TMPDIR="$(mktemp -d "$STATE_DIR/install.XXXXXX")"
+  mkdir -p "$DATA_DIR"
+  DATA_DIR="$(cd "$DATA_DIR" && pwd -P)"
+  chmod 700 "$DATA_DIR" 2>/dev/null || true
+  create_bootstrap_tmpdir
   trap cleanup EXIT
   find_or_install_python
   resolve_workdir

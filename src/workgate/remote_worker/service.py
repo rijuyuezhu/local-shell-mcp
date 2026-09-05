@@ -24,6 +24,7 @@ from ..utils.private_files import (
 from . import runtime
 from .profiles import read_worker_profile
 from .state import (
+    WORKER_DATA_DIR_ENV,
     WORKER_PROFILE_ID_ENV,
     WORKER_RUNTIME_DIGEST_ENV,
     active_worker_runtime_digest,
@@ -144,7 +145,7 @@ def launchd_plist_path() -> Path:
 
 def launcher_path() -> Path:
     """Return the stable private worker launcher path."""
-    return runtime.worker_state_dir() / "bin" / "worker-launcher.py"
+    return runtime.worker_data_dir() / "bin" / "worker-launcher.py"
 
 
 def launchd_log_path() -> Path:
@@ -281,11 +282,12 @@ def _launcher_text(
     else:
         profile_setup = ""
         run_args = json.dumps(["run"])
+    state_root = repr(str(runtime.worker_state_dir()))
     if selected is not None:
         worker_runtime_dir_for_digest(selected)
         runtime_setup = f"""\
 runtime_digest = {selected!r}
-runtime_dir = state_dir / "runtimes" / runtime_digest
+runtime_dir = data_dir / "runtimes" / runtime_digest
 if not runtime_dir.is_dir():
     raise SystemExit("managed worker runtime is unavailable")
 sys.path.insert(0, str(runtime_dir))
@@ -293,7 +295,7 @@ os.environ[{WORKER_RUNTIME_DIGEST_ENV!r}] = runtime_digest
 """
     else:
         runtime_setup = """\
-runtime_dir = state_dir / "runtime"
+runtime_dir = data_dir / "runtime"
 if runtime_dir.is_dir():
     sys.path.insert(0, str(runtime_dir))
 """
@@ -303,9 +305,11 @@ import os
 import sys
 from pathlib import Path
 
-state_dir = Path(__file__).resolve().parents[1]
+data_dir = Path(__file__).resolve().parents[1]
+state_dir = Path(os.environ.get("WORKGATE_WORKER_STATE_DIR", {state_root})).expanduser().resolve()
 {runtime_setup.rstrip()}
-os.environ.setdefault("WORKGATE_WORKER_STATE_DIR", str(state_dir))
+os.environ["WORKGATE_WORKER_STATE_DIR"] = str(state_dir)
+os.environ[{WORKER_DATA_DIR_ENV!r}] = str(data_dir)
 {profile_setup}
 os.environ["WORKGATE_REMOTE_WORKER_RUNTIME"] = "1"
 os.environ["WORKGATE_WORKER_MANAGED"] = "1"
@@ -351,6 +355,7 @@ def systemd_unit_text(workdir: str) -> str:
     """Generate one deterministic credential-free user unit."""
     launcher = launcher_path()
     state_dir = runtime.worker_state_dir()
+    data_dir = runtime.worker_data_dir()
     return "\n".join(
         [
             "[Unit]",
@@ -363,6 +368,7 @@ def systemd_unit_text(workdir: str) -> str:
             f"ExecStart={_systemd_quote(sys.executable)} {_systemd_quote(str(launcher))}",
             f"WorkingDirectory={_systemd_quote(workdir)}",
             f"Environment={_systemd_quote(f'WORKGATE_WORKER_STATE_DIR={state_dir}')}",
+            f"Environment={_systemd_quote(f'{WORKER_DATA_DIR_ENV}={data_dir}')}",
             f"Environment={_systemd_quote(f'{_WORKER_MANAGED_ENV}=1')}",
             "Restart=always",
             "RestartSec=5",
@@ -401,6 +407,7 @@ def launchd_plist_bytes(workdir: str) -> bytes:
         "WorkingDirectory": workdir,
         "EnvironmentVariables": {
             "WORKGATE_WORKER_STATE_DIR": str(runtime.worker_state_dir()),
+            WORKER_DATA_DIR_ENV: str(runtime.worker_data_dir()),
             _WORKER_MANAGED_ENV: "1",
             "PATH": _launchd_path(),
         },

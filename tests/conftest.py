@@ -11,8 +11,15 @@ def _reset_managed_deferred_sequence(job_recovery) -> None:
 @pytest.fixture(autouse=True)
 def isolated_runtime_paths(monkeypatch, tmp_path):
     state_dir = tmp_path / ".workgate"
+    runtime_dir = tmp_path / ".xdg-runtime"
+    runtime_dir.mkdir()
     monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("WORKGATE_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime_dir))
     clear_settings_cache()
     yield
     clear_settings_cache()

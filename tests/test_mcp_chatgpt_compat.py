@@ -13,6 +13,7 @@ from starlette.applications import Starlette
 
 from tests.helpers import mcp_structured
 from workgate.agent_bridge.mcp import AgentMcpTool
+from workgate.app_paths import app_paths
 from workgate.config.settings import clear_settings_cache, get_settings
 from workgate.executors.http.app import build_http_app
 from workgate.executors.mcp.app import (
@@ -660,7 +661,7 @@ async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
 async def test_agent_bridge_annotations_remain_conservative(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / ".workgate" / "agent_config"
+    config_dir = app_paths().agent_config_dir
     config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(

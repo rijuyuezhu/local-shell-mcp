@@ -624,15 +624,17 @@ async def test_worker_result_submission_keeps_heartbeats_while_retrying(
     assert len(heartbeat_calls) == heartbeat_count
 
 
-def test_worker_runtime_env_replaces_default_workspace_paths(
+def test_worker_runtime_env_explicitly_binds_remote_workspace_and_state(
     tmp_path, monkeypatch
 ):
     import workgate.remote_worker.worker as worker
 
     workdir = tmp_path / "remote-workdir"
     worker_state = tmp_path / "worker-state"
-    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", "/workspace")
-    monkeypatch.setenv("WORKGATE_STATE_DIR", "/workspace/.workgate")
+    monkeypatch.setenv(
+        "WORKGATE_WORKSPACE_ROOT", str(tmp_path / "inherited-workspace")
+    )
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / "inherited-state"))
     monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "false")
     monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(worker_state))
 
@@ -643,21 +645,27 @@ def test_worker_runtime_env_replaces_default_workspace_paths(
     assert os.environ["WORKGATE_ALLOW_FULL_CONTROL"] == "true"
 
 
-def test_worker_runtime_env_preserves_explicit_custom_paths(
+def test_worker_runtime_env_profile_state_is_authoritative(
     tmp_path, monkeypatch
 ):
     import workgate.remote_worker.worker as worker
 
-    custom_workspace = tmp_path / "custom-workspace"
-    custom_state = tmp_path / "custom-state"
-    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(custom_workspace))
-    monkeypatch.setenv("WORKGATE_STATE_DIR", str(custom_state))
+    worker_state = tmp_path / "worker-state"
+    profile_id = "p_abcdefgh"
+    workdir = tmp_path / "remote-workdir"
+    monkeypatch.setenv(
+        "WORKGATE_WORKSPACE_ROOT", str(tmp_path / "custom-workspace")
+    )
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / "custom-state"))
     monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "false")
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(worker_state))
 
-    worker._configure_worker_runtime_env(str(tmp_path / "remote-workdir"))
+    worker._configure_worker_runtime_env(str(workdir), profile_id)
 
-    assert os.environ["WORKGATE_WORKSPACE_ROOT"] == str(custom_workspace)
-    assert os.environ["WORKGATE_STATE_DIR"] == str(custom_state)
+    assert os.environ["WORKGATE_WORKSPACE_ROOT"] == str(workdir)
+    assert os.environ["WORKGATE_STATE_DIR"] == str(
+        worker_state / "profiles" / profile_id / "state"
+    )
     assert os.environ["WORKGATE_ALLOW_FULL_CONTROL"] == "true"
 
 

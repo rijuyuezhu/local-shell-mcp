@@ -1284,7 +1284,7 @@ def test_join_script_installs_persistent_verified_runtime():
         .joinpath("join_worker.sh")
         .read_text(encoding="utf-8")
     )
-    assert 'RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"' in script
+    assert 'RUNTIME_DIR="$DATA_DIR/runtimes/$RUNTIME_DIGEST"' in script
     assert 'RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"' in script
     assert 'name = "run.cmd" if os.name == "nt" else "run"' in script
     assert "select_launcher_path" in script
@@ -1302,11 +1302,14 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "member.isreg()" in script
     assert "os.replace(staging, runtime)" in script
     assert 'export WORKGATE_WORKER_STATE_DIR="$STATE_DIR"' in script
+    assert 'export WORKGATE_WORKER_DATA_DIR="$DATA_DIR"' in script
     assert 'export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"' in script
     assert (
         'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
     )
     assert 'STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"' in script
+    assert 'DATA_DIR="$(cd "$DATA_DIR" && pwd -P)"' in script
+    assert '"workgate/app_paths.py"' in script
     assert 'cd "$RUNTIME_DIR"' in script
     assert 'ARGS=(connect --server "$SERVER" --invite "$INVITE"' in script
     assert '--profile "$PROFILE_ID"' in script

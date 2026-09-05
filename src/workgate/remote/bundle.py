@@ -20,6 +20,7 @@ from .constants import REMOTE_WORKER_BUNDLE_PATH
 # worker-runtime manifest, not a general workgate package snapshot.
 _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "__init__.py",
+    "app_paths.py",
     "audit/*.py",
     "errors.py",
     "version.py",

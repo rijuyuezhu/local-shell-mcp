@@ -10,11 +10,10 @@ from workgate.agent_bridge.models import (
 )
 from workgate.agent_bridge.redaction import _redact_text, redact_mapping
 from workgate.agent_bridge.state import load_agent_manifest
+from workgate.app_paths import app_paths
 from workgate.config.settings import (
     AGENT_AUTH_STATE_DIR_NAME,
-    AGENT_CONFIG_STATE_DIR_NAME,
     AUDIT_LOG_STATE_DIR_NAME,
-    DEFAULT_STATE_DIR,
     clear_settings_cache,
     get_settings,
     load_settings,
@@ -29,22 +28,20 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
     clear_settings_cache()
 
     settings = load_settings()
+    default_state_dir = app_paths().state_dir
 
     assert settings.workspace_root == tmp_path.resolve()
-    assert settings.state_dir == DEFAULT_STATE_DIR.resolve()
+    assert settings.state_dir == default_state_dir.resolve()
     assert (
         settings.audit_log_path
         == (
-            DEFAULT_STATE_DIR / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
+            default_state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
         ).resolve()
     )
-    assert (
-        settings.agent_config_dir
-        == (DEFAULT_STATE_DIR / AGENT_CONFIG_STATE_DIR_NAME).resolve()
-    )
+    assert settings.agent_config_dir == app_paths().agent_config_dir.resolve()
     assert (
         settings.agent_auth_dir
-        == (DEFAULT_STATE_DIR / AGENT_AUTH_STATE_DIR_NAME).resolve()
+        == (default_state_dir / AGENT_AUTH_STATE_DIR_NAME).resolve()
     )
     assert settings.agent_bridge_enabled is True
     assert settings.agent_mcp_probe_timeout_s == 5
@@ -59,10 +56,7 @@ def test_dependent_state_paths_are_derived_from_custom_state_dir(
     clear_settings_cache()
 
     settings = get_settings()
-    assert (
-        settings.agent_config_dir
-        == (state_dir / AGENT_CONFIG_STATE_DIR_NAME).resolve()
-    )
+    assert settings.agent_config_dir == app_paths().agent_config_dir.resolve()
     assert (
         settings.audit_log_path
         == (state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl").resolve()

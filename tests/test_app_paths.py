@@ -50,7 +50,7 @@ def test_linux_relative_xdg_roots_fall_back(tmp_path: Path) -> None:
 
 
 def test_linux_uses_suitable_runtime_dir(tmp_path: Path) -> None:
-    runtime = tmp_path / "runtime"
+    runtime = tmp_path / "xdg-runtime"
     runtime.mkdir()
     paths = resolve_app_paths(
         env={"XDG_RUNTIME_DIR": str(runtime)},

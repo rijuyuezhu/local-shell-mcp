@@ -4,10 +4,13 @@ import os
 import re
 from pathlib import Path
 
+from ..app_paths import app_paths
+
 _RUNTIME_METADATA_FILE_NAME = "runtime.json"
 _PROFILE_METADATA_FILE_NAME = "profile.json"
 WORKER_PROFILE_ID_ENV = "WORKGATE_WORKER_PROFILE_ID"
 WORKER_RUNTIME_DIGEST_ENV = "WORKGATE_WORKER_RUNTIME_SHA256"
+WORKER_DATA_DIR_ENV = "WORKGATE_WORKER_DATA_DIR"
 _PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
 _RUNTIME_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -18,13 +21,19 @@ def worker_state_dir() -> Path:
     if configured:
         path = Path(configured).expanduser()
     else:
-        xdg_state_home = os.getenv("XDG_STATE_HOME")
-        path = (
-            Path(xdg_state_home).expanduser() / "workgate-worker"
-            if xdg_state_home
-            else Path.home() / ".local" / "state" / "workgate-worker"
-        )
+        path = app_paths().worker_state_dir
     return path.resolve()
+
+
+def worker_data_dir() -> Path:
+    """Return the persistent installation-data directory for this worker."""
+    configured = os.getenv(WORKER_DATA_DIR_ENV)
+    if configured:
+        return Path(configured).expanduser().resolve()
+    legacy_state = os.getenv("WORKGATE_WORKER_STATE_DIR")
+    if legacy_state:
+        return Path(legacy_state).expanduser().resolve()
+    return app_paths().worker_data_dir.resolve()
 
 
 def worker_profiles_dir() -> Path:
@@ -84,7 +93,7 @@ def worker_profile_lock_path(profile_id: str) -> Path:
 
 def worker_runtimes_dir() -> Path:
     """Return the root containing immutable content-addressed runtimes."""
-    return worker_state_dir() / "runtimes"
+    return worker_data_dir() / "runtimes"
 
 
 def worker_runtime_dir_for_digest(digest: str) -> Path:
@@ -120,22 +129,22 @@ def activate_worker_runtime(digest: str | None) -> str | None:
 def worker_launcher_path() -> Path:
     """Return the stable user-facing worker launcher path."""
     name = "run.cmd" if os.name == "nt" else "run"
-    return worker_state_dir() / name
+    return worker_data_dir() / name
 
 
 def worker_launcher_runner_path() -> Path:
     """Return the standalone Python runner used by the stable launcher."""
-    return worker_state_dir() / "run.py"
+    return worker_data_dir() / "run.py"
 
 
 def worker_python_path() -> Path:
     """Return the stored Python executable used by the stable launcher."""
-    return worker_state_dir() / "python"
+    return worker_data_dir() / "python"
 
 
 def worker_install_lock_path() -> Path:
     """Return the lock serializing shared runtime installation."""
-    return worker_state_dir() / "install.lock"
+    return worker_data_dir() / "install.lock"
 
 
 def worker_runtime_dir(digest: str | None = None) -> Path:
@@ -143,7 +152,7 @@ def worker_runtime_dir(digest: str | None = None) -> Path:
     selected = digest if digest is not None else active_worker_runtime_digest()
     if selected is not None:
         return worker_runtime_dir_for_digest(selected)
-    return worker_state_dir() / "runtime"
+    return worker_data_dir() / "runtime"
 
 
 def runtime_metadata_path(digest: str | None = None) -> Path:
@@ -151,7 +160,7 @@ def runtime_metadata_path(digest: str | None = None) -> Path:
     selected = digest if digest is not None else active_worker_runtime_digest()
     if selected is not None:
         return runtime_metadata_path_for_digest(selected)
-    return worker_state_dir() / _RUNTIME_METADATA_FILE_NAME
+    return worker_data_dir() / _RUNTIME_METADATA_FILE_NAME
 
 
 def worker_lock_path(profile_id: str | None = None) -> Path:

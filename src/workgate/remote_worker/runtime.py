@@ -27,6 +27,7 @@ from ..remote.constants import (
 from ..utils.private_files import private_file_lock
 from .state import (
     runtime_metadata_path,
+    worker_data_dir,
     worker_install_lock_path,
     worker_runtime_dir,
     worker_runtime_dir_for_digest,
@@ -34,7 +35,7 @@ from .state import (
     worker_state_dir,
 )
 
-__all__ = ("worker_state_dir",)
+__all__ = ("worker_data_dir", "worker_state_dir")
 
 POLL_PROTOCOL_VERSION = REMOTE_WORKER_POLL_PROTOCOL_VERSION
 MANIFEST_SCHEMA_VERSION = 1
@@ -43,6 +44,7 @@ MAX_EXTRACTED_BYTES = 128 * 1024 * 1024
 MAX_ARCHIVE_FILES = 4_096
 _REQUIRED_RUNTIME_FILES = (
     "workgate/__init__.py",
+    "workgate/app_paths.py",
     "workgate/remote_worker/__init__.py",
     "workgate/remote_worker/__main__.py",
     "workgate/remote_worker/compat.py",
