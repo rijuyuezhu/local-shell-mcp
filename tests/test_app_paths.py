@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+
+import pytest
 
 from workgate.app_paths import resolve_app_paths
 
@@ -49,6 +52,9 @@ def test_linux_relative_xdg_roots_fall_back(tmp_path: Path) -> None:
     assert paths.runtime_dir.name.startswith("workgate-")
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX XDG runtime ownership/mode contract"
+)
 def test_linux_uses_suitable_runtime_dir(tmp_path: Path) -> None:
     runtime = tmp_path / "xdg-runtime"
     runtime.mkdir(mode=0o700)

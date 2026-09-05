@@ -49,6 +49,35 @@ def test_runtime_discovery_uses_explicit_package_and_source_roots(
     assert sidecar in runtime._tui_sidecar_candidates()
 
 
+def test_same_regular_file_content_rejects_unsafe_or_mismatched_inputs(
+    tmp_path: Path,
+) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    right.write_bytes(b"a")
+
+    assert runtime._same_regular_file_content(left, right) is False
+
+    left.mkdir()
+    assert runtime._same_regular_file_content(left, right) is False
+
+    left.rmdir()
+    left.write_bytes(b"bb")
+    assert runtime._same_regular_file_content(left, right) is False
+
+
+def test_same_regular_file_content_compares_bytes(tmp_path: Path) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    left.write_bytes(b"same")
+    right.write_bytes(b"same")
+
+    assert runtime._same_regular_file_content(left, right) is True
+
+    right.write_bytes(b"diff")
+    assert runtime._same_regular_file_content(left, right) is False
+
+
 def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(
     tmp_path: Path,
 ) -> None:
