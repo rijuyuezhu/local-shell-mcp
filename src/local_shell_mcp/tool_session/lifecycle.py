@@ -221,13 +221,3 @@ def try_session_lifecycle_lease(session_id: str) -> Generator[bool]:
         yield True
     finally:
         stack.close()
-
-
-def reset_session_lifecycle_locks_for_tests() -> None:
-    """Clear idle lifecycle entries between isolated test runtimes."""
-    with _ENTRIES_LOCK:
-        if any(entry.users for entry in _ENTRIES.values()):
-            raise RuntimeError(
-                "cannot reset session lifecycle locks while in use"
-            )
-        _ENTRIES.clear()

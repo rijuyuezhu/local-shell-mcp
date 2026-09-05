@@ -1,4 +1,3 @@
-import inspect
 import shutil
 
 import pytest
@@ -20,12 +19,9 @@ from local_shell_mcp.remote_worker.search_composition import (
     build_worker_dispatcher_with_search,
 )
 from local_shell_mcp.schemas.result_models.search import (
-    GlobSearchOutput,
     GrepSearchOutput,
-    TreeViewOutput,
 )
 from local_shell_mcp.tool_session import configure_tool_session_store
-from local_shell_mcp.tools.registry import search as search_registry_module
 from local_shell_mcp.tools.registry.search import SearchToolRegistry
 
 
@@ -53,9 +49,7 @@ def _configure_runtime_services(settings: Settings):
 
 
 @pytest.mark.asyncio
-async def test_controller_catalog_binds_search_without_changing_tool_signature(
-    tmp_path, monkeypatch
-):
+async def test_controller_catalog_binds_search_service(tmp_path, monkeypatch):
     if not shutil.which("rg"):
         pytest.skip("missing rg")
     settings = _settings(tmp_path, monkeypatch)
@@ -77,9 +71,6 @@ async def test_controller_catalog_binds_search_without_changing_tool_signature(
         tool for tool in registry._enabled_tools() if tool.name == "search"
     )
 
-    assert inspect.signature(bound_search.func) == inspect.signature(
-        search_registry_module.search.func
-    )
     assert bound_search.session_admission == "handler"
     assert (
         next(
@@ -218,111 +209,7 @@ async def test_worker_dispatcher_uses_composed_search_override(
 
 
 @pytest.mark.asyncio
-async def test_search_registry_unbound_service_and_legacy_wrappers(monkeypatch):
+async def test_unbound_search_registry_rejects_bound_handler_use():
     registry = SearchToolRegistry()
     with pytest.raises(RuntimeError, match="Search service is not bound"):
         await registry._bound_search("SESSION01", "needle")
-
-    tree_output = TreeViewOutput(
-        root=".",
-        exists=True,
-        is_directory=True,
-        entries=[],
-        count=0,
-        truncated=False,
-    )
-    glob_output = GlobSearchOutput(paths=["src/app.py"])
-    search_output = GrepSearchOutput(
-        ok=True,
-        matches=[],
-        displayed_lines=[],
-        count=0,
-        displayed_count=0,
-        context_radius=0,
-        skipped=0,
-        truncated=False,
-        stderr="",
-        numbered_content="",
-    )
-    calls = []
-
-    async def fake_tree(session_id, cwd, depth, max_entries):
-        calls.append(("tree", session_id, cwd, depth, max_entries))
-        return tree_output
-
-    async def fake_glob(session_id, pattern, cwd, max_results):
-        calls.append(("glob", session_id, pattern, cwd, max_results))
-        return glob_output
-
-    async def fake_search(
-        pattern,
-        paths,
-        cwd,
-        regex,
-        case_sensitive,
-        max_results,
-        session_id,
-        skip,
-        gitignore,
-    ):
-        calls.append(
-            (
-                "search",
-                pattern,
-                paths,
-                cwd,
-                regex,
-                case_sensitive,
-                max_results,
-                session_id,
-                skip,
-                gitignore,
-            )
-        )
-        return search_output
-
-    monkeypatch.setattr(search_registry_module, "tree_view_execute", fake_tree)
-    monkeypatch.setattr(
-        search_registry_module, "glob_search_execute", fake_glob
-    )
-    monkeypatch.setattr(search_registry_module, "search_execute", fake_search)
-
-    assert (
-        await search_registry_module.tree_view.func("SESSION01", "src", 2, 10)
-        == tree_output
-    )
-    assert (
-        await search_registry_module.glob_search.func(
-            "SESSION01", "*.py", "src", 20
-        )
-        == glob_output
-    )
-    assert (
-        await search_registry_module.search.func(
-            "SESSION01",
-            "needle",
-            "src",
-            False,
-            False,
-            3,
-            2,
-            False,
-        )
-        == search_output
-    )
-    assert calls == [
-        ("tree", "SESSION01", "src", 2, 10),
-        ("glob", "SESSION01", "*.py", "src", 20),
-        (
-            "search",
-            "needle",
-            "src",
-            ".",
-            False,
-            False,
-            3,
-            "SESSION01",
-            2,
-            False,
-        ),
-    ]

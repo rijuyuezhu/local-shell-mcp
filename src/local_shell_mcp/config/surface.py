@@ -296,14 +296,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "max_tree_entries", "Safety and resource limits", metavar="COUNT"
     ),
-    SettingSpec(
-        "max_read_many_files", "Safety and resource limits", metavar="COUNT"
-    ),
-    SettingSpec(
-        "max_read_many_total_bytes",
-        "Safety and resource limits",
-        metavar="BYTES",
-    ),
     SettingSpec("max_todos", "Safety and resource limits", metavar="COUNT"),
     SettingSpec(
         "max_todo_bytes", "Safety and resource limits", metavar="BYTES"

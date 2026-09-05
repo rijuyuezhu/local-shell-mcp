@@ -41,7 +41,6 @@ from .state import (
     activate_worker_profile,
     activate_worker_runtime,
     active_worker_profile_id,
-    worker_identity_path,
     worker_launcher_path,
     worker_profile_dir,
     worker_state_dir,
@@ -313,11 +312,6 @@ def _configure_worker_runtime_env(
         )
         os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = str(runtime_state)
     os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] = "true"
-
-
-def _worker_identity_path(profile_id: str | None = None) -> Path:
-    """Return the JSON identity file path for this worker process."""
-    return worker_identity_path(profile_id)
 
 
 def _read_worker_identity(

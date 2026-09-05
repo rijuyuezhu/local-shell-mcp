@@ -1101,46 +1101,6 @@
         ],
         [
           {
-            "code": "max_read_many_files"
-          },
-          {
-            "lines": [
-              {
-                "code": "--max-read-many-files"
-              }
-            ]
-          },
-          {
-            "code": "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES"
-          },
-          "integer",
-          {
-            "code": "100"
-          },
-          "Maximum files allowed in one internal multi-file read operation."
-        ],
-        [
-          {
-            "code": "max_read_many_total_bytes"
-          },
-          {
-            "lines": [
-              {
-                "code": "--max-read-many-total-bytes"
-              }
-            ]
-          },
-          {
-            "code": "LOCAL_SHELL_MCP_MAX_READ_MANY_TOTAL_BYTES"
-          },
-          "integer",
-          {
-            "code": "5000000"
-          },
-          "Maximum total byte limit for one internal multi-file read operation."
-        ],
-        [
-          {
             "code": "max_todos"
           },
           {
@@ -2751,32 +2711,6 @@
       "description": "Maximum tree-view entries.",
       "env": "LOCAL_SHELL_MCP_MAX_TREE_ENTRIES",
       "name": "max_tree_entries",
-      "nullable": false,
-      "section": "Safety and resource limits",
-      "type": "integer",
-      "unset_cli": null
-    },
-    {
-      "choices": [],
-      "cli": "--max-read-many-files",
-      "default": 100,
-      "default_display": "100",
-      "description": "Maximum files allowed in one internal multi-file read operation.",
-      "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES",
-      "name": "max_read_many_files",
-      "nullable": false,
-      "section": "Safety and resource limits",
-      "type": "integer",
-      "unset_cli": null
-    },
-    {
-      "choices": [],
-      "cli": "--max-read-many-total-bytes",
-      "default": 5000000,
-      "default_display": "5000000",
-      "description": "Maximum total byte limit for one internal multi-file read operation.",
-      "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_TOTAL_BYTES",
-      "name": "max_read_many_total_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

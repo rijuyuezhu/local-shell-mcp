@@ -6,7 +6,6 @@ from typing import Any, cast
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _RUNNER_PATH = _REPO_ROOT / "scripts" / "testing" / "run-browser-e2e.py"
-_OLD_RUNNER_PATH = _REPO_ROOT / "scripts" / "run-browser-e2e.py"
 
 
 def _load_runner() -> Any:
@@ -18,11 +17,6 @@ def _load_runner() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return cast(ModuleType, module)
-
-
-def test_browser_e2e_runner_has_one_testing_owner() -> None:
-    assert _RUNNER_PATH.is_file()
-    assert not _OLD_RUNNER_PATH.exists()
 
 
 def test_browser_e2e_runner_forwards_contract_and_exit_status(

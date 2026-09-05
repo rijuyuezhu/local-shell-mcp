@@ -602,44 +602,6 @@ def scan_agent_skills(
     )
 
 
-def load_agent_skill(
-    config_dir: Path,
-    name: str,
-    directory: str = "skills",
-    *,
-    source_name: str = "managed",
-    source_path: str | None = None,
-    max_related_files: int = DEFAULT_MAX_RELATED_FILES,
-    max_scan_entries: int = DEFAULT_MAX_SCAN_ENTRIES,
-    max_path_bytes: int = DEFAULT_MAX_PATH_BYTES,
-    max_entry_bytes: int = DEFAULT_MAX_ENTRY_BYTES,
-) -> dict[str, Any]:
-    """Load one Skill directly without scanning or reading every installed Skill."""
-    config_root, skills_dir = _resolved_skills_directory(config_dir, directory)
-    record, content, content_bytes, warnings, _, _ = _load_skill_record(
-        config_root,
-        skills_dir,
-        validate_skill_name(name),
-        source_name=source_name,
-        source_path=str(skills_dir) if source_path is None else source_path,
-        max_entry_bytes=max_entry_bytes,
-        max_related_files=max_related_files,
-        max_scan_entries=max_scan_entries,
-        max_path_bytes=max_path_bytes,
-    )
-    return {
-        "name": record.name,
-        "source": record.source,
-        "source_path": record.source_path,
-        "entry_path": record.entry_path,
-        "description": record.description,
-        "content": content,
-        "bytes": content_bytes,
-        "related_files": list(record.related_files),
-        "warnings": warnings,
-    }
-
-
 def read_agent_skill_file(
     config_dir: Path,
     name: str,

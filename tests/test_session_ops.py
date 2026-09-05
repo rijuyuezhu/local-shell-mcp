@@ -5,10 +5,12 @@ import subprocess
 import sys
 import time
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import persistence as job_persistence
 from local_shell_mcp.jobs import runtime as jobs_runtime
 from local_shell_mcp.jobs import shell as jobs_shell
 from local_shell_mcp.ops import session as session_ops
@@ -18,6 +20,11 @@ from local_shell_mcp.remote_worker import dispatch as worker_dispatch
 from local_shell_mcp.terminal.runtime import build_terminal_runtime
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import session as session_registry
+
+
+def _load_job_store_untyped() -> dict[str, Any]:
+    """Expose mutable job rows only to tests that intentionally inspect internals."""
+    return cast(dict[str, Any], job_persistence.load_store())
 
 
 def _start_peer_managed_job_lease(
@@ -115,7 +122,7 @@ async def test_session_start_reconciles_stale_shell_job_before_capacity_check(
     store = get_tool_session_store()
     store.clear()
     stale_session = store.create_session(workdir=tmp_path, expires_at=0)
-    jobs_runtime._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_runtime.JOB_STORE_VERSION,
             "jobs": [
@@ -148,7 +155,7 @@ async def test_session_start_reconciles_stale_shell_job_before_capacity_check(
     assert result.session_id != stale_session.session_id
     with pytest.raises(ValueError, match="unknown session_id"):
         store.require_session(stale_session.session_id)
-    assert jobs_runtime._load_store()["jobs"][0]["status"] == "lost"
+    assert _load_job_store_untyped()["jobs"][0]["status"] == "lost"
 
 
 @pytest.mark.asyncio
@@ -477,7 +484,7 @@ async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
     monkeypatch.setattr(session_ops, "_stop_owned_shells", no_shells)
     try:
         _wait_for_peer_marker(process, marker)
-        jobs_runtime._save_store(
+        job_persistence.save_store(
             {
                 "version": jobs_runtime.JOB_STORE_VERSION,
                 "jobs": [
@@ -508,7 +515,7 @@ async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
 
         retained = store.require_session(destination.session_id)
         assert retained.termination_requested_at is not None
-        row = jobs_runtime._load_store()["jobs"][0]
+        row = _load_job_store_untyped()["jobs"][0]
         assert row["status"] == "running"
 
         release.write_text("release", encoding="utf-8")
@@ -536,7 +543,7 @@ async def test_destination_teardown_migrates_legacy_managed_copy(
     store.clear()
     source = store.create_session(workdir=tmp_path)
     destination = store.create_session(workdir=tmp_path)
-    jobs_runtime._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_runtime.JOB_STORE_VERSION,
             "jobs": [
@@ -569,7 +576,7 @@ async def test_destination_teardown_migrates_legacy_managed_copy(
     assert ended.ended is True
     with pytest.raises(ValueError, match="unknown session_id"):
         store.require_session(destination.session_id)
-    row = jobs_runtime._load_store()["jobs"][0]
+    row = _load_job_store_untyped()["jobs"][0]
     assert row["status"] == "lost"
 
 
@@ -690,7 +697,7 @@ async def test_stop_owned_jobs_consumes_durable_completion_without_inventory(
     store = get_tool_session_store()
     store.clear()
     session = store.create_session(workdir=tmp_path)
-    paths = jobs_runtime._attempt_paths("job_completed", 1)
+    paths = job_persistence.attempt_paths("job_completed", 1)
     paths["status"].write_text(
         json.dumps(
             {
@@ -703,7 +710,7 @@ async def test_stop_owned_jobs_consumes_durable_completion_without_inventory(
         ),
         encoding="utf-8",
     )
-    jobs_runtime._save_store(
+    job_persistence.save_store(
         {
             "version": jobs_runtime.JOB_STORE_VERSION,
             "jobs": [
@@ -739,7 +746,7 @@ async def test_stop_owned_jobs_consumes_durable_completion_without_inventory(
     monkeypatch.setattr(jobs_runtime, "job_stop_execute", unexpected_stop)
 
     assert await session_ops._stop_owned_jobs(session.session_id) == []
-    assert jobs_runtime._load_store()["jobs"][0]["status"] == "succeeded"
+    assert _load_job_store_untyped()["jobs"][0]["status"] == "succeeded"
 
 
 @pytest.mark.asyncio
@@ -900,18 +907,24 @@ async def test_session_end_retries_unconfirmed_conpty_termination(
         retained = store.require_session(session.session_id)
         assert retained.persistent_shell_ids == ("owned-conpty",)
         assert retained.termination_requested_at is not None
-        assert conpty.has_session("owned-conpty") is True
+        assert "owned-conpty" in {
+            shell.shell_id for shell in (await conpty.list_shells()).shells
+        }
         assert conpty.authoritative_shell_ids() == {"owned-conpty"}
 
         ended = await session_ops.session_end_execute(session.session_id)
 
         assert ended.session_id == session.session_id
         assert ended.stopped_shells == ["owned-conpty"]
-        assert conpty.has_session("owned-conpty") is False
+        assert "owned-conpty" not in {
+            shell.shell_id for shell in (await conpty.list_shells()).shells
+        }
         assert conpty.authoritative_shell_ids() == set()
         assert process.close_calls == 2
     finally:
-        if conpty.has_session("owned-conpty"):
+        if "owned-conpty" in {
+            shell.shell_id for shell in (await conpty.list_shells()).shells
+        }:
             await conpty.kill_shell("owned-conpty")
         await terminal_runtime.aclose()
 

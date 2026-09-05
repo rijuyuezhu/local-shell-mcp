@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import subprocess
@@ -8,7 +9,7 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.downloads import (
-    create_file_link_execute,
+    create_file_link_dispatch_execute,
     list_file_links_execute,
 )
 from local_shell_mcp.ops.utils.download_snapshot import snapshot_directory
@@ -23,6 +24,10 @@ def _configure(tmp_path: Path, monkeypatch) -> None:
     clear_settings_cache()
 
 
+def _create_file_link(path: str) -> None:
+    asyncio.run(create_file_link_dispatch_execute(path, ttl_s=60))
+
+
 def test_concurrent_processes_do_not_lose_links(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
     sources = []
@@ -34,9 +39,9 @@ def test_concurrent_processes_do_not_lose_links(tmp_path, monkeypatch):
     script = """
 import sys
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.downloads import create_file_link_execute
+from local_shell_mcp.ops.downloads import create_file_link_dispatch_execute
 clear_settings_cache()
-create_file_link_execute(sys.argv[1], ttl_s=60)
+__import__("asyncio").run(create_file_link_dispatch_execute(sys.argv[1], ttl_s=60))
 """
     environment = os.environ.copy()
     processes = [
@@ -67,7 +72,7 @@ create_file_link_execute(sys.argv[1], ttl_s=60)
 def test_corrupt_primary_and_backup_refuse_silent_reset(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
     (tmp_path / "artifact.txt").write_text("payload", encoding="utf-8")
-    create_file_link_execute("artifact.txt", ttl_s=60)
+    _create_file_link("artifact.txt")
     store_path().write_text("{broken-primary", encoding="utf-8")
     backup_path().write_text("{broken-backup", encoding="utf-8")
 

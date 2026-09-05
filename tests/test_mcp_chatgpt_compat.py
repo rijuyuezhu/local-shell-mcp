@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
-from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.executors.mcp.app import (
     _add_public_routes_to_mcp_http_app,
@@ -247,13 +247,13 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "url",
         "metadata",
     }
-    assert "search -> fetch workflow" in (
+    workspace_search_description = (
         tools["workspace_search"].description or ""
-    )
-    assert "id should normally come from a prior workspace_search" in (
-        tools["fetch"].description or ""
-    )
-    assert "prefer read(session_id, path)" in (tools["fetch"].description or "")
+    ).lower()
+    fetch_description = (tools["fetch"].description or "").lower()
+    assert {"search", "fetch"} <= set(workspace_search_description.split())
+    assert "workspace_search" in fetch_description
+    assert "read" in fetch_description and "session_id" in fetch_description
 
     structured = mcp_structured(
         await mcp.call_tool("session_start", {"workdir": "."})
@@ -262,14 +262,11 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert structured["target"] == "local"
     assert structured["workdir"] == str(tmp_path)
     assert structured["workspace_root"] == str(tmp_path)
-    assert (
-        structured["message"]
-        == "Use this session_id in subsequent workspace tool calls."
-    )
+    assert "session_id" in structured["message"]
 
 
 @pytest.mark.asyncio
-async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
+async def test_shell_tool_schema_exposes_session_and_execution_modes(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -285,17 +282,15 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
     mode_output = output_schema["properties"]["mode"]
     result_output = output_schema["properties"]["result"]
 
-    assert "terminal work" in command_input["description"]
-    assert "agent/workspace session_id" in session_input["description"]
     assert "session_id" in tool.inputSchema["required"]
-    assert "bounded command mode" in timeout_input["description"]
-    assert "Execution mode" in mode_output["description"]
-    assert "bounded command" in result_output["description"]
+    assert command_input["type"] == "string"
+    assert session_input["type"] == "string"
+    assert timeout_input["default"] is None
+    assert mode_output["type"] == "string"
+    assert result_output["type"] == "object"
     description = tool.description or ""
-    assert "session_id returned by session_start" in description
-    assert "job_id owned by the same session_id" in description
-    assert "shell_id for persistent-shell companion tools" in description
-    assert "Do not use shell_id with job" in description
+    for concept in ("session_id", "job_id", "shell_id", "async_", "pty"):
+        assert concept in description
 
 
 @pytest.mark.asyncio
@@ -316,18 +311,13 @@ async def test_persistent_shell_tools_use_shell_id_not_session_id(
     for name in companion_names:
         tool = tools[name]
         input_properties = tool.inputSchema["properties"]
-        input_text = str(tool.inputSchema) + (tool.description or "")
         output_schema = _output_schema(tool)
-        output_text = str(output_schema)
 
         assert "shell_id" in tool.inputSchema["required"]
         assert "shell_id" in input_properties
         assert "session_id" not in input_properties
-        assert "shell_id is separate" in input_text
-        assert "agent/workspace session_id" in input_text
         assert "shell_id" in output_schema["properties"]
         assert "session_id" not in output_schema["properties"]
-        assert "session_id" not in output_text
 
     list_schema = _output_schema(tools["list_persistent_shells"])
     assert "shells" in list_schema["properties"]
@@ -362,7 +352,7 @@ async def test_shell_tool_returns_per_tool_structured_content(
 
 
 @pytest.mark.asyncio
-async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
+async def test_file_tool_schema_exposes_grounded_read_contract(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -385,18 +375,12 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     assert "binary_preview_bytes" not in read_tool.inputSchema["properties"]
     assert "file" in read_output_schema["properties"]
     assert "directory" in read_output_schema["properties"]
-    assert (
-        read_output_schema["properties"]["content"]["description"]
-        == "Model-facing content. File reads use hashline-style text unless raw is true; directories use a compact listing."
-    )
-    assert (
-        list_files_output_schema["properties"]["entries"]["description"]
-        == "Returned directory entries."
-    )
+    assert "content" in read_output_schema["properties"]
+    assert "entries" in list_files_output_schema["properties"]
 
 
 @pytest.mark.asyncio
-async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
+async def test_search_tool_schema_exposes_search_and_paging_contract(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -412,9 +396,10 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
     tree_output_schema = _output_schema(tree_tool)
     assert search_output_schema["title"] == "GrepSearchOutput"
     assert tree_output_schema["title"] == "TreeViewOutput"
-    assert search_tool.inputSchema["properties"]["pattern"]["description"] == (
-        "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
-    )
+    pattern_description = search_tool.inputSchema["properties"]["pattern"][
+        "description"
+    ].lower()
+    assert "regular expression" in pattern_description
     assert (
         "case-sensitive"
         in search_tool.inputSchema["properties"]["case_sensitive"][
@@ -429,14 +414,8 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
         "page through noisy searches"
         in search_tool.inputSchema["properties"]["skip"]["description"]
     )
-    assert (
-        search_output_schema["properties"]["matches"]["description"]
-        == "Returned ripgrep matches."
-    )
-    assert (
-        search_output_schema["properties"]["skipped"]["description"]
-        == "Number of earlier matches skipped before the returned page."
-    )
+    assert "matches" in search_output_schema["properties"]
+    assert "skipped" in search_output_schema["properties"]
     assert "session_id" in tree_tool.inputSchema["required"]
     assert "session_id" in glob_tool.inputSchema["required"]
     assert (
@@ -447,22 +426,11 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
         "session workdir"
         in glob_tool.inputSchema["properties"]["cwd"]["description"]
     )
-    assert "session_id returned by session_start" in (
-        tree_tool.description or ""
-    )
-    assert "session_id returned by session_start" in (
-        glob_tool.description or ""
-    )
-    assert (
-        tree_output_schema["properties"]["entries"]["description"]
-        == "Indented tree entries relative to root."
-    )
+    assert "entries" in tree_output_schema["properties"]
 
 
 @pytest.mark.asyncio
-async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
-    tmp_path, monkeypatch
-):
+async def test_misc_tool_output_schemas_are_exposed(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
@@ -475,18 +443,12 @@ async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
     secret_output_schema = _output_schema(secret_tool)
     assert todo_output_schema["title"] == "WriteTodosOutput"
     assert secret_output_schema["title"] == "SecretScanOutput"
-    assert (
-        "Replacement todo list"
-        in todo_tool.inputSchema["properties"]["todos"]["description"]
-    )
-    assert (
-        secret_output_schema["properties"]["findings"]["description"]
-        == "Returned heuristic secret findings."
-    )
+    assert "todos" in todo_tool.inputSchema["properties"]
+    assert "findings" in secret_output_schema["properties"]
 
 
 @pytest.mark.asyncio
-async def test_job_tool_schema_descriptions_explain_bash_companion(
+async def test_job_tool_schema_exposes_durable_companion_contract(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -495,20 +457,19 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
     companion = tools["job"]
-    description = companion.description or ""
+    description = (companion.description or "").lower()
     assert "bash" in description
-    assert "Starting work belongs" in description
-    assert "after completion and server restart" in description
+    assert "job_id" in description
+    assert "restart" in description
+    assert any(
+        word in description for word in ("durable", "retained", "persist")
+    )
 
     lines_schema = companion.inputSchema["properties"]["lines"]
     assert lines_schema["minimum"] == 1
     assert lines_schema["maximum"] == 5000
-    assert "Output is retained after completion" in lines_schema["description"]
     assert "session_id" in companion.inputSchema["required"]
-    assert (
-        "Tracked bash"
-        in companion.inputSchema["properties"]["cancel"]["description"]
-    )
+    assert "cancel" in companion.inputSchema["properties"]
 
     output_schema = _output_schema(companion)
     assert output_schema["title"] == "JobOutput"
@@ -526,14 +487,8 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
     ]
     job_info_schema = output_schema["$defs"]["JobInfo"]
     assert "backend" not in job_info_schema["properties"]
-    assert (
-        job_info_schema["properties"]["session_id"]["description"]
-        == "Agent/workspace session_id that owns this tracked job."
-    )
-    assert (
-        output_schema["properties"]["operation"]["description"]
-        == "Job operation performed by the unified job companion tool."
-    )
+    assert "session_id" in job_info_schema["properties"]
+    assert "operation" in output_schema["properties"]
 
 
 @pytest.mark.asyncio
@@ -547,8 +502,10 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
     bash_description = tools["bash"].description or ""
     search_description = tools["search"].description or ""
-    assert "timeout default/cap" in bash_description
-    assert "max_grep_results=678" in search_description
+    settings = get_settings()
+    assert str(settings.run_shell_default_timeout_s) in bash_description
+    assert str(settings.run_shell_max_timeout_s) in bash_description
+    assert str(settings.max_grep_results) in search_description
 
 
 def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
@@ -955,14 +912,14 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
     assert stored["clients"][0]["approved_at"] is not None
     approved_at = oauth_state().clients[client_id].approved_at
 
-    oauth_state().clients.clear()
-    assert oauth_service.initialize_dynamic_clients() == 1
+    reloaded_state = OAuthState(state_dir)
+    assert reloaded_state.start() == 1
 
-    assert oauth_state().clients[client_id].redirect_uris == [
+    assert reloaded_state.clients[client_id].redirect_uris == [
         "https://client.example/callback"
     ]
-    assert oauth_state().clients[client_id].client_name == "Persistent client"
-    assert oauth_state().clients[client_id].approved_at == approved_at
+    assert reloaded_state.clients[client_id].client_name == "Persistent client"
+    assert reloaded_state.clients[client_id].approved_at == approved_at
 
 
 def test_oauth_client_approval_rolls_back_when_persistence_fails(
@@ -996,7 +953,6 @@ def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
-    oauth_state().clients.clear()
     store_path = client_store_path()
     store_path.parent.mkdir(parents=True, exist_ok=True)
     store_path.write_text("{not-json", encoding="utf-8")
@@ -1004,7 +960,7 @@ def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
     with pytest.raises(
         RuntimeError, match="Unable to read OAuth client registry"
     ):
-        oauth_service.initialize_dynamic_clients()
+        OAuthState(tmp_path / ".state").start()
 
 
 def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):

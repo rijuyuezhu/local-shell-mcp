@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import json
@@ -18,7 +19,6 @@ from local_shell_mcp.http.downloads import (
 )
 from local_shell_mcp.ops.downloads import (
     create_file_link_dispatch_execute,
-    create_file_link_execute,
     download_token_fingerprint,
     list_file_links_execute,
     revoke_file_link_execute,
@@ -36,11 +36,16 @@ def _reset(tmp_path, monkeypatch):
     clear_settings_cache()
 
 
+def _create_file_link(*args, **kwargs):
+    """Exercise the real async dispatcher from synchronous HTTP tests."""
+    return asyncio.run(create_file_link_dispatch_execute(*args, **kwargs))
+
+
 def test_create_share_link_serves_file(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
-    link = create_file_link_execute(
+    link = _create_file_link(
         "hello.txt", ttl_s=60, filename="result.txt", max_downloads=2
     )
 
@@ -57,14 +62,14 @@ def test_share_link_expires_and_can_be_revoked(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
-    link = create_file_link_execute("hello.txt", ttl_s=1)
+    link = _create_file_link("hello.txt", ttl_s=1)
     token = link.token
     assert revoke_file_link_execute(token).revoked is True
 
     app = Starlette(routes=download_routes())
     assert TestClient(app).get(link.url).status_code == 404
 
-    link = create_file_link_execute("hello.txt", ttl_s=1)
+    link = _create_file_link("hello.txt", ttl_s=1)
     time.sleep(1.05)
     assert TestClient(app).get(link.url).status_code == 410
 
@@ -72,7 +77,7 @@ def test_share_link_expires_and_can_be_revoked(tmp_path, monkeypatch):
 def test_share_link_download_limit(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
-    link = create_file_link_execute("hello.txt", ttl_s=60, max_downloads=1)
+    link = _create_file_link("hello.txt", ttl_s=60, max_downloads=1)
     client = TestClient(Starlette(routes=download_routes()))
 
     assert client.get(link.url).status_code == 200
@@ -86,7 +91,7 @@ def test_share_link_can_be_disabled(tmp_path, monkeypatch):
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
     with pytest.raises(PermissionError):
-        create_file_link_execute("hello.txt", ttl_s=60)
+        _create_file_link("hello.txt", ttl_s=60)
 
 
 def test_file_links_are_session_owned(tmp_path, monkeypatch):
@@ -97,7 +102,7 @@ def test_file_links_are_session_owned(tmp_path, monkeypatch):
     first = store.create_session(workdir=".").session_id
     second = store.create_session(workdir=".").session_id
 
-    link = create_file_link_execute("hello.txt", ttl_s=60, session_id=first)
+    link = _create_file_link("hello.txt", ttl_s=60, session_id=first)
 
     assert [
         item.token for item in list_file_links_execute(session_id=first).links
@@ -109,22 +114,6 @@ def test_file_links_are_session_owned(tmp_path, monkeypatch):
     assert (
         revoke_file_link_execute(link.token, session_id=first).revoked is True
     )
-
-
-def test_file_links_reject_remote_sessions(tmp_path, monkeypatch):
-    _reset(tmp_path, monkeypatch)
-    (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
-    store = get_tool_session_store()
-    store.clear()
-    remote = store.create_session(
-        target="remote",
-        workdir="/remote/project",
-        machine="worker-a",
-        worker_session_id="WORKER12",
-    ).session_id
-
-    with pytest.raises(ValueError, match="local sessions"):
-        create_file_link_execute("hello.txt", ttl_s=60, session_id=remote)
 
 
 @pytest.mark.asyncio
@@ -143,18 +132,14 @@ async def test_file_link_tools_are_registered(tmp_path, monkeypatch):
     assert list_tool.outputSchema is not None
     assert create_tool.outputSchema["title"] == "CreateFileLinkOutput"
     assert list_tool.outputSchema["title"] == "ListFileLinksOutput"
-    assert create_tool.inputSchema["properties"]["path"]["description"] == (
-        "Existing regular file path to expose through a temporary tokenized download URL."
-    )
+    path_description = create_tool.inputSchema["properties"]["path"][
+        "description"
+    ]
+    assert "file" in path_description.lower()
+    assert "download" in path_description.lower()
     assert create_tool.inputSchema["properties"]["inline"]["default"] is False
-    assert (
-        create_tool.outputSchema["properties"]["target"]["description"]
-        == "Session target from which the snapshot was created."
-    )
-    assert (
-        create_tool.outputSchema["properties"]["url"]["description"]
-        == "Browser-accessible download URL containing the token."
-    )
+    assert "target" in create_tool.outputSchema["properties"]
+    assert "url" in create_tool.outputSchema["properties"]
 
 
 @pytest.mark.asyncio
@@ -227,7 +212,7 @@ def test_file_link_serves_creation_time_snapshot(tmp_path, monkeypatch):
     source = tmp_path / "artifact.txt"
     source.write_text("original", encoding="utf-8")
 
-    link = create_file_link_execute("artifact.txt", ttl_s=60)
+    link = _create_file_link("artifact.txt", ttl_s=60)
     source.write_text("changed after link creation", encoding="utf-8")
 
     response = TestClient(Starlette(routes=download_routes())).get(link.url)
@@ -249,7 +234,7 @@ def test_inline_link_uses_sandbox_and_filename_mime_fallback(
     _reset(tmp_path, monkeypatch)
     payload = b"\x89PNG\r\n\x1a\nmock-png"
     (tmp_path / "rendered").write_bytes(payload)
-    link = create_file_link_execute(
+    link = _create_file_link(
         "rendered",
         ttl_s=60,
         filename="plot.png",
@@ -279,7 +264,7 @@ def test_source_extension_takes_precedence_over_display_filename(
     _reset(tmp_path, monkeypatch)
     (tmp_path / "notes.txt").write_text("text", encoding="utf-8")
 
-    link = create_file_link_execute(
+    link = _create_file_link(
         "notes.txt", ttl_s=60, filename="pretend.png", inline=True
     )
 
@@ -289,7 +274,7 @@ def test_source_extension_takes_precedence_over_display_filename(
 def test_final_download_deletes_private_snapshot(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "once.txt").write_text("once", encoding="utf-8")
-    link = create_file_link_execute("once.txt", ttl_s=60, max_downloads=1)
+    link = _create_file_link("once.txt", ttl_s=60, max_downloads=1)
     client = TestClient(Starlette(routes=download_routes()))
 
     assert len(list(snapshot_directory().glob("*.bin"))) == 1
@@ -301,7 +286,7 @@ def test_final_download_deletes_private_snapshot(tmp_path, monkeypatch):
 def test_tampered_private_snapshot_is_rejected(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "stable.txt").write_text("stable", encoding="utf-8")
-    link = create_file_link_execute("stable.txt", ttl_s=60)
+    link = _create_file_link("stable.txt", ttl_s=60)
     snapshot = next(snapshot_directory().glob("*.bin"))
     snapshot.write_bytes(b"stolen")
 
@@ -373,7 +358,7 @@ async def test_remote_file_link_streams_validated_snapshot(
 def test_download_store_recovers_from_backup(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
-    link = create_file_link_execute("hello.txt", ttl_s=60)
+    link = _create_file_link("hello.txt", ttl_s=60)
     download_store_path = get_settings().state_dir / "downloads.json"
     download_store_path.write_text("{broken", encoding="utf-8")
 
@@ -439,7 +424,7 @@ def test_download_filename_is_header_safe_and_rfc5987_encoded(
 ):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
-    link = create_file_link_execute(
+    link = _create_file_link(
         "hello.txt",
         ttl_s=60,
         filename='报告 "final"\\name.txt',

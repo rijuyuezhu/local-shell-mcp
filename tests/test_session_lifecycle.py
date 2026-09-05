@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import persistence as job_persistence
 from local_shell_mcp.tool_session import lifecycle
 from local_shell_mcp.tool_session.store import (
     SESSION_ACTIVE_WINDOW_S,
@@ -115,28 +116,6 @@ async def test_cancelled_lifecycle_waiter_does_not_leak_entry():
     await holder_task
 
     assert "SESSION1" not in lifecycle._ENTRIES
-
-
-@pytest.mark.asyncio
-async def test_reset_lifecycle_locks_rejects_active_entries():
-    entered = asyncio.Event()
-    release = asyncio.Event()
-
-    async def holder() -> None:
-        async with lifecycle.session_lifecycle_lock("SESSION1"):
-            entered.set()
-            await release.wait()
-
-    task = asyncio.create_task(holder())
-    await entered.wait()
-
-    with pytest.raises(RuntimeError, match="while in use"):
-        lifecycle.reset_session_lifecycle_locks_for_tests()
-
-    release.set()
-    await task
-    lifecycle.reset_session_lifecycle_locks_for_tests()
-    assert lifecycle._ENTRIES == {}
 
 
 @pytest.mark.asyncio
@@ -295,7 +274,7 @@ asyncio.run(main())
         with pytest.raises(UnknownAgentSessionError):
             await asyncio.wait_for(admission, timeout=5)
         assert await asyncio.to_thread(process.wait, timeout=5) == 0
-        assert jobs_ops._load_store()["jobs"] == []
+        assert job_persistence.load_store()["jobs"] == []
     finally:
         if process.poll() is None:
             process.kill()

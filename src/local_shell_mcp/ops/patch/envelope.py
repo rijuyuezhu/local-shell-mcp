@@ -49,19 +49,6 @@ def git_apply_prefix(git_bin: str, cwd: str) -> str | None:
     return prefix.removesuffix("/") or None
 
 
-def git_apply_command(
-    quoted_git: str,
-    quoted_patch: str,
-    quoted_prefix: str | None = None,
-    *,
-    check: bool = False,
-) -> str:
-    """Build the legacy human-readable git apply command string."""
-    check_flag = " --check" if check else ""
-    directory = f" --directory {quoted_prefix}" if quoted_prefix else ""
-    return f"{quoted_git} apply{check_flag}{directory} {quoted_patch}"
-
-
 def normalize_patch_text(patch: str, cwd: str = ".") -> str:
     """Convert an apply_patch envelope to a standard unified diff."""
     envelope = patch.lstrip("\ufeff\r\n")

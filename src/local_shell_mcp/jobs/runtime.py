@@ -1,7 +1,6 @@
 """Shared durable tracked-job runtime, persistence, and runner helpers."""
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any, cast
 
 from ..ops.shell import (
@@ -25,7 +24,6 @@ from ..tool_session.store import (
 )
 from . import lifecycle as job_lifecycle
 from . import managed as job_managed
-from . import persistence as job_persistence
 from . import recovery as job_recovery
 from . import shell as job_shell
 from . import state as job_state
@@ -36,18 +34,8 @@ from .persistence import (
     TERMINAL_STATUSES,
 )
 from .persistence import (
-    job_runtime_dir as _persistence_job_runtime_dir,
-)
-from .persistence import (
-    job_store_backup_path as _persistence_job_store_backup_path,
-)
-from .persistence import (
-    job_store_path as _persistence_job_store_path,
-)
-from .persistence import (
     prune_store as _prune_store,
 )
-from .runner import run_job_runner_from_args as _run_job_runner_from_args
 from .state import (
     ACTIVE_STATUSES,
     JobStatusPayload,
@@ -125,16 +113,6 @@ _job_start_execute_unlocked = job_shell.start_shell_job_unlocked
 job_reconcile_shell_jobs_execute = job_shell.reconcile_shell_jobs_execute
 
 
-def _runner_command(argv: list[str], shell: str) -> str:
-    """Compatibility facade for quoting one durable runner command."""
-    return job_lifecycle._runner_command(argv, shell)
-
-
-def _attempt_paths(job_id: str, attempt: int) -> dict[str, Path]:
-    """Compatibility facade retaining the historical mutable-dict test surface."""
-    return cast(dict[str, Path], job_persistence.attempt_paths(job_id, attempt))
-
-
 def _find_session_job(
     store: Mapping[str, Any], session_id: str, job_id: str
 ) -> dict[str, Any]:
@@ -177,36 +155,6 @@ def _refresh_job_status(
 def _read_log_tail(path: str | None, lines: int) -> str:
     """Compatibility facade for bounded durable log reads."""
     return job_lifecycle._read_log_tail(path, lines)
-
-
-def run_job_runner_from_args(args: Any) -> None:
-    """Compatibility facade for the standalone durable attempt runner."""
-    _run_job_runner_from_args(args)
-
-
-def _job_store_path() -> Path:
-    """Compatibility facade for the primary durable job-store path."""
-    return _persistence_job_store_path()
-
-
-def _job_store_backup_path() -> Path:
-    """Compatibility facade for the backup durable job-store path."""
-    return _persistence_job_store_backup_path()
-
-
-def _job_runtime_dir() -> Path:
-    """Compatibility facade for the private job-attempt directory."""
-    return _persistence_job_runtime_dir()
-
-
-def _load_store() -> dict[str, Any]:
-    """Compatibility facade for durable job-store loading."""
-    return cast(dict[str, Any], job_persistence.load_store())
-
-
-def _save_store(store: dict[str, Any]) -> None:
-    """Compatibility facade for durable job-store persistence."""
-    job_persistence.save_store(store)
 
 
 async def job_start_execute(

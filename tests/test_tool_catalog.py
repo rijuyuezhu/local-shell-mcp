@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from local_shell_mcp.config.settings import Settings
@@ -129,14 +127,3 @@ def test_catalog_rejects_duplicate_local_handler_names() -> None:
         ValueError, match="Duplicate local tool handler: duplicate"
     ):
         catalog.local_handlers()
-
-
-def test_builtin_catalog_no_longer_uses_runtime_module_introspection() -> None:
-    source = Path("src/local_shell_mcp/tools/catalog.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "pkgutil" not in source
-    assert "importlib" not in source
-    assert "inspect.getmembers" not in source
-    assert "lru_cache" not in source

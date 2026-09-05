@@ -181,17 +181,6 @@ class ReadFileMetadata(BaseModel):
         )
 
 
-class ReadManyFilesOutput(BaseModel):
-    """Batch file read result."""
-
-    files: list[ReadFileOutput] = Field(
-        description="Per-file read results in request order."
-    )
-    total_content_bytes: int = Field(
-        description="Total UTF-8 bytes returned across text content."
-    )
-
-
 class WriteFileOutput(BaseModel):
     """File write result."""
 
@@ -202,21 +191,6 @@ class WriteFileOutput(BaseModel):
     created: bool = Field(
         description="Whether the file did not exist before this write."
     )
-
-
-class EditFileOutput(BaseModel):
-    """Exact-text edit result."""
-
-    path: str = Field(
-        description="Workspace-relative file path that was edited."
-    )
-    replacements: int = Field(
-        description="Number of exact-text replacements applied."
-    )
-
-
-class MultiEditFileOutput(EditFileOutput):
-    """Multiple exact-text edit result."""
 
 
 class EditLinesOutput(BaseModel):

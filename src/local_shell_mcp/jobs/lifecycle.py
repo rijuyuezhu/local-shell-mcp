@@ -52,16 +52,6 @@ def _shell_safe_name(value: str) -> str:
     return cleaned or "job"
 
 
-def _active_shell_ids(shells: Any) -> set[str]:
-    """Extract active persistent shell ids from the shell list output."""
-    data = shells.model_dump() if hasattr(shells, "model_dump") else shells
-    return {
-        str(item.get("shell_id") or item.get("session_id"))
-        for item in data.get("shells", data.get("sessions", []))
-        if item.get("shell_id") or item.get("session_id")
-    }
-
-
 def _runner_argv(paths: JobAttemptPaths, cwd: Path) -> list[str]:
     """Build the internal durable runner invocation for one attempt."""
     arguments = [

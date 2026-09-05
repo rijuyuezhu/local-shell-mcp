@@ -44,7 +44,7 @@ def test_require_tmux_reports_unavailable(monkeypatch: pytest.MonkeyPatch):
         tmux_helper.require_tmux("tmux")
 
 
-def test_resolve_tmux_reads_settings_and_reports_diagnostics(
+def test_resolve_tmux_reads_settings(
     monkeypatch: pytest.MonkeyPatch,
 ):
     class Settings:
@@ -56,11 +56,9 @@ def test_resolve_tmux_reads_settings_and_reports_diagnostics(
         "which",
         lambda value: "/opt/tmux" if value == "configured-tmux" else None,
     )
-    assert tmux_helper.tmux_backend_info() == {
-        "available": True,
-        "source": "configured",
-        "path": "/opt/tmux",
-    }
+    assert tmux_helper.resolve_tmux() == tmux_helper.TmuxSelection(
+        "/opt/tmux", "configured", "configured-tmux"
+    )
 
 
 @pytest.mark.asyncio

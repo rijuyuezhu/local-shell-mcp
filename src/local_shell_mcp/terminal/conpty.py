@@ -627,19 +627,6 @@ class _ConPtySession:
         return error
 
 
-def has_session(shell_id: str) -> bool:
-    """Return whether one live ConPTY shell remains, reaping dead state."""
-    registry = _conpty_registry()
-    with registry.lock:
-        session = registry.sessions.get(shell_id)
-    if session is None:
-        return False
-    if session.process_alive():
-        return True
-    session.close(force=False)
-    return False
-
-
 def _get_session(shell_id: str) -> _ConPtySession:
     if not _SHELL_ID_PATTERN.fullmatch(shell_id):
         raise RuntimeError(f"Persistent shell session not found: {shell_id}")

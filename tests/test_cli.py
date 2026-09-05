@@ -228,19 +228,6 @@ def test_worker_subcommand_parse_to_worker_handler():
     assert not hasattr(args, "persist")
 
 
-def test_legacy_flat_worker_parser_is_rejected():
-    with pytest.raises(SystemExit):
-        cli._build_parser().parse_args(
-            [
-                "worker",
-                "--server",
-                "https://example.com",
-                "--invite",
-                "lsmcp_inv_xxxxx",
-            ]
-        )
-
-
 def test_tui_subcommand_parses_loopback_api_base():
     args = cli._build_parser().parse_args(
         ["tui", "--port", "9443", "--api-base", "https://localhost:9443/api/ui"]

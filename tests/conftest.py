@@ -3,6 +3,11 @@ import pytest
 from local_shell_mcp.config.settings import clear_settings_cache
 
 
+def _reset_managed_deferred_sequence(job_recovery) -> None:
+    with job_recovery._MANAGED_DEFERRED_SEQUENCE_LOCK:
+        job_recovery._MANAGED_DEFERRED_NEXT_SEQUENCE = None
+
+
 @pytest.fixture(autouse=True)
 def isolated_runtime_paths(monkeypatch, tmp_path):
     state_dir = tmp_path / ".local-shell-mcp"
@@ -31,7 +36,7 @@ async def managed_jobs_runtime_owner():
     runtime.register_handler(kind, handler)
     await runtime.start()
     previous = configure_managed_jobs_runtime(runtime)
-    job_recovery.reset_deferred_sequence_for_tests()
+    _reset_managed_deferred_sequence(job_recovery)
     try:
         yield runtime
     finally:
@@ -39,4 +44,4 @@ async def managed_jobs_runtime_owner():
             await runtime.aclose()
         finally:
             configure_managed_jobs_runtime(previous)
-            job_recovery.reset_deferred_sequence_for_tests()
+            _reset_managed_deferred_sequence(job_recovery)

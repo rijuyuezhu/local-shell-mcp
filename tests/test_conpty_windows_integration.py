@@ -102,13 +102,14 @@ async def test_real_windows_conpty_persistent_shell_and_raw_bridge(
 
         attachment.close_sync()
         attachment = None
-        assert conpty.has_session(shell_id) is True
         listed = await conpty.list_shells()
         assert shell_id in {item.shell_id for item in listed.shells}
     finally:
         if attachment is not None:
             attachment.close_sync()
-        if conpty.has_session(shell_id):
+        if shell_id in {
+            item.shell_id for item in (await conpty.list_shells()).shells
+        }:
             await conpty.kill_shell(shell_id)
         await runtime.aclose()
         clear_settings_cache()

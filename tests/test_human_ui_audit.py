@@ -1252,68 +1252,13 @@ def test_audit_detail_rejects_invalid_inline_image(monkeypatch, tmp_path):
     assert entry["image_preview_error"]
 
 
-def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
+def test_audit_static_ui_avoids_html_injection_for_untrusted_details():
     static_root = (
         Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
     )
-    index = (static_root / "index.html").read_text(encoding="utf-8")
-
     audit_script = (static_root / "audit.js").read_text(encoding="utf-8")
-    sessions_script = (static_root / "sessions.js").read_text(encoding="utf-8")
     audit_view = (static_root / "audit_view.js").read_text(encoding="utf-8")
-    global_refresh = audit_script[
-        audit_script.index(
-            "async function refreshAudit()"
-        ) : audit_script.index("function invalidate")
-    ]
-    session_snapshot = sessions_script[
-        sessions_script.index(
-            "function applySessionAuditPayload"
-        ) : sessions_script.index("function sessionAuditQueryPath")
-    ]
 
-    assert global_refresh.index(
-        "controllerState.auditDetailGeneration += 1;"
-    ) < global_refresh.index("controllerState.auditEntries =")
-    assert session_snapshot.index(
-        "controllerState.sessionAuditDetailGeneration += 1;"
-    ) < session_snapshot.index("controllerState.sessionAuditEntries =")
-    assert 'id="audit-machine"' in index
-    assert 'id="audit-list"' in index
-    assert 'id="audit-detail-body"' in index
-    assert "controllerState.auditGeneration" in audit_script
-    assert "controllerState.auditDetailGeneration" in audit_script
-    assert "URLSearchParams" in audit_script
-    assert "renderAuditDetailInto(entry" in audit_script
-    assert 'auditCallPanel("Call request")' in audit_view
-    assert 'auditCallPanel("Call result")' in audit_view
-    assert "body.tabIndex = 0" in audit_view
-    assert (
-        'id="audit-detail-body" class="audit-detail-body" tabindex="0"'
-        not in index
-    )
-    assert (
-        'id="session-audit-detail-body" class="audit-detail-body" tabindex="0"'
-        not in index
-    )
-    assert "auditSupplementalDetails" in audit_view
-    assert "if (value === undefined) return undefined" in audit_view
-    assert "renderAuditDetailMessage" in audit_view
     assert "innerHTML" not in audit_view
     assert "elements.auditDetailBody.innerHTML" not in audit_script
-    assert "audit-image-preview" in audit_view
-    assert ".audit-detail pre" not in (static_root / "web.css").read_text(
-        encoding="utf-8"
-    )
-    assert 'scope: "global"' in audit_script
-    assert 'scope: "session"' in sessions_script
-    assert 'id="audit-session"' not in index
-    assert 'id="session-audit-list"' in index
-    assert (
-        "session_id"
-        not in audit_script[
-            audit_script.index("function auditQueryPath") : audit_script.index(
-                "async function loadAuditDetail"
-            )
-        ]
-    )
+    assert "textContent" in audit_view

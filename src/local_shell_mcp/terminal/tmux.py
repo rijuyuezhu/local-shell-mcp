@@ -61,13 +61,3 @@ def require_tmux(configured: str | None = None) -> TmuxSelection:
     raise RuntimeError(
         "tmux is unavailable; install tmux or configure LOCAL_SHELL_MCP_TMUX_BIN"
     )
-
-
-def tmux_backend_info() -> dict[str, str | bool | None]:
-    """Return non-sensitive diagnostics for the persistent-shell backend."""
-    selection = resolve_tmux()
-    return {
-        "available": selection.path is not None,
-        "source": selection.source,
-        "path": selection.path,
-    }
